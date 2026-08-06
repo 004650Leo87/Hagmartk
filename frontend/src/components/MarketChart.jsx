@@ -29,6 +29,8 @@ import {
 } from '../chart/chartFactory';
 
 
+const HISTORY_PAGE_SIZE = 500;
+
 function MarketChart({
     symbol = 'XAUUSD',
     timeframe = 'M5',
@@ -124,17 +126,7 @@ function MarketChart({
 
         saveCurrentViewRef.current = saveCurrentView;
 
-        const handleVisibleLogicalRangeChange = () => {
-            saveCurrentView();
-        };
-
-        chart
-            .timeScale()
-            .subscribeVisibleLogicalRangeChange(
-                handleVisibleLogicalRangeChange,
-            );
-
-        const {
+                const {
             handlePointerDown: navigationPointerDown,
             handlePointerMove: navigationPointerMove,
             finishVerticalDrag: navigationFinishVerticalDrag,
@@ -210,13 +202,7 @@ function MarketChart({
                 chartEvents,
             );
 
-            chart
-                .timeScale()
-                .unsubscribeVisibleLogicalRangeChange(
-                    handleVisibleLogicalRangeChange,
-                );
-
-            resizeObserver.disconnect();
+                        resizeObserver.disconnect();
 
             chart.remove();
 
@@ -263,7 +249,7 @@ function MarketChart({
                     getCandles,
                     symbol,
                     timeframe,
-                    limit: 500,
+                    limit: HISTORY_PAGE_SIZE,
                 });
 
                 if (!active) {

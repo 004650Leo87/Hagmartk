@@ -1,12 +1,15 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
 import MarketChart from './components/MarketChart';
+import { timeframeCodes } from './chart/chartConstants';
 
 import {
   getAccountPositions,
   getAccountSummary,
   getQuotes,
   getSymbols,
+  getSystemHealth,
+  getTimeframes,
   getTodayHistory,
 } from './services/api';
 const menuItems = [
@@ -33,8 +36,6 @@ const dockTabs = [
   { id: 'history', label: 'Histórico' },
   { id: 'logs', label: 'Registros' },
 ];
-
-const timeframes = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1'];
 
 const fallbackMarkets = [
   {
@@ -248,10 +249,18 @@ function App() {
 
   const [selectedSymbol, setSelectedSymbol] = useState('XAUUSD');
   const [selectedTimeframe, setSelectedTimeframe] = useState('M5');
+  const initialSelectedSymbolRef = useRef(selectedSymbol);
+  const initialSelectedTimeframeRef = useRef(selectedTimeframe);
 
   const [symbols, setSymbols] = useState([]);
   const [loadingSymbols, setLoadingSymbols] = useState(true);
   const [symbolsError, setSymbolsError] = useState('');
+
+  const [timeframes, setTimeframes] = useState([]);
+  const [timeframeMap, setTimeframeMap] = useState({});
+
+  const [systemHealth, setSystemHealth] = useState(null);
+  const [systemHealthError, setSystemHealthError] = useState('');
 
   const [quotes, setQuotes] = useState([]);
   const [loadingQuotes, setLoadingQuotes] = useState(true);
@@ -282,6 +291,13 @@ function App() {
 
         if (active) {
           setSymbols(normalizedSymbols);
+
+          if (
+            normalizedSymbols.length > 0 &&
+            !normalizedSymbols.includes(initialSelectedSymbolRef.current)
+          ) {
+            setSelectedSymbol(normalizedSymbols[0]);
+          }
         }
       } catch (error) {
         console.error('Erro ao carregar os ativos:', error);
@@ -302,6 +318,97 @@ function App() {
 
     return () => {
       active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadTimeframes() {
+      try {
+        const data = await getTimeframes();
+        const normalized = Array.isArray(data)
+          ? data
+          : Array.isArray(data?.timeframes)
+          ? data.timeframes
+          : [];
+
+        if (!active) {
+          return;
+        }
+
+        setTimeframes(normalized);
+
+        const map = normalized.reduce((acc, item) => {
+          if (item && item.name && item.code != null) {
+            acc[item.name] = item.code;
+          }
+
+          return acc;
+        }, {});
+
+        setTimeframeMap(map);
+
+        if (
+          normalized.length > 0 &&
+          !normalized.some(
+            (item) => item.name === initialSelectedTimeframeRef.current,
+          )
+        ) {
+          setSelectedTimeframe(normalized[0].name);
+        }
+      } catch (error) {
+        console.error('Erro ao carregar timeframes:', error);
+      } finally {
+        // loadingTimeframes state is not used in this scope.
+      }
+    }
+
+    loadTimeframes();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    let intervalId = null;
+
+    async function loadSystemHealth() {
+      try {
+        setSystemHealthError('');
+
+        const data = await getSystemHealth();
+
+        if (!active) {
+          return;
+        }
+
+        setSystemHealth(data);
+      } catch (error) {
+        console.error('Erro ao carregar o estado do sistema:', error);
+
+        if (active) {
+          setSystemHealth(null);
+          setSystemHealthError(
+            'Não foi possível carregar o status do sistema.',
+          );
+        }
+      } finally {
+        // loadingSystemHealth state is not used in this scope.
+      }
+    }
+
+    loadSystemHealth();
+    intervalId = window.setInterval(loadSystemHealth, 5000);
+
+    return () => {
+      active = false;
+
+      if (intervalId) {
+        window.clearInterval(intervalId);
+      }
     };
   }, []);
 
@@ -503,10 +610,29 @@ function App() {
   const accountConnected =
     Boolean(account?.connected) && !accountError;
 
+  const marketAdapterConnected =
+    !systemHealthError &&
+    Boolean(systemHealth?.adapter_connected);
+
   const apiConnected =
-    !quotesError &&
-    quotes.length > 0 &&
-    accountConnected;
+    !systemHealthError &&
+    systemHealth !== null;
+
+  const timeframeOptions =
+    timeframes.length > 0
+      ? timeframes
+      : Object.keys(timeframeCodes).map((name) => ({
+          name,
+          code: timeframeCodes[name],
+        }));
+
+  const brokerName =
+    systemHealth?.broker_name || account?.company || '--';
+
+  const symbolsAvailable =
+    typeof systemHealth?.symbol_count === 'number'
+      ? systemHealth.symbol_count
+      : symbols.length || '--';
 
   const todayDeals = useMemo(() => {
     if (!Array.isArray(dailyHistory?.deals)) {
@@ -597,14 +723,14 @@ function App() {
 
           <div className="system-monitor-body">
             <div>
-              <span>MetaTrader</span>
+              <span>Adaptador MT5</span>
 
               <strong
                 className={
-                  accountConnected ? 'online' : 'offline'
+                  marketAdapterConnected ? 'online' : 'offline'
                 }
               >
-                {accountConnected ? 'On-line' : 'Off-line'}
+                {marketAdapterConnected ? 'On-line' : 'Off-line'}
               </strong>
             </div>
 
@@ -642,7 +768,23 @@ function App() {
 
             <div>
               <span>Ativos</span>
-              <strong>{symbols.length || '--'}</strong>
+              <strong>{symbolsAvailable}</strong>
+            </div>
+
+            <div>
+              <span>Tempo</span>
+              <strong>
+                {timeframes.length > 0
+                  ? timeframes.length
+                  : '--'}
+              </strong>
+            </div>
+
+            <div>
+              <span>Última verificação</span>
+              <strong>
+                {systemHealth?.last_symbol_update || '--'}
+              </strong>
             </div>
 
             <div>
@@ -677,20 +819,20 @@ function App() {
             </div>
 
             <div className="timeframe-selector">
-              {timeframes.map((timeframe) => (
+              {timeframeOptions.map((option) => (
                 <button
-                  key={timeframe}
+                  key={option.name}
                   type="button"
                   className={
-                    selectedTimeframe === timeframe
+                    selectedTimeframe === option.name
                       ? 'timeframe-button active'
                       : 'timeframe-button'
                   }
                   onClick={() =>
-                    setSelectedTimeframe(timeframe)
+                    setSelectedTimeframe(option.name)
                   }
                 >
-                  {timeframe}
+                  {option.name}
                 </button>
               ))}
             </div>
@@ -707,8 +849,8 @@ function App() {
               <span className="status-light" />
 
               {accountConnected
-                ? 'MetaTrader conectado'
-                : 'MetaTrader desconectado'}
+                ? 'Conta conectada'
+                : 'Conta desconectada'}
             </div>
 
             <button
@@ -891,6 +1033,7 @@ function App() {
               <MarketChart
                 symbol={selectedSymbol}
                 timeframe={selectedTimeframe}
+                timeframeMap={timeframeMap}
                 refreshInterval={2000}
               />
             </div>
@@ -933,7 +1076,7 @@ function App() {
                       <strong>Lista de observação</strong>
 
                       <span>
-                        {symbols.length || '--'} ativos disponíveis
+                        {symbolsAvailable} ativos disponíveis
                       </span>
                     </div>
 
@@ -1454,6 +1597,11 @@ function App() {
           <div>
             <span>Período</span>
             <strong>{selectedTimeframe}</strong>
+          </div>
+
+          <div>
+            <span>Broker</span>
+            <strong>{brokerName}</strong>
           </div>
 
           <div>

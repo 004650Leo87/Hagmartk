@@ -42,6 +42,27 @@ class MarketService:
 
         return [symbol.name for symbol in symbols]
 
+    def supported_timeframes(self) -> list[dict[str, Any]]:
+        self._ensure_connection()
+
+        timeframe_map: dict[int, str] = {}
+
+        for attribute_name in dir(mt5):
+            if attribute_name.startswith('TIMEFRAME_'):
+                code = getattr(mt5, attribute_name)
+                timeframe_map[int(code)] = attribute_name.replace(
+                    'TIMEFRAME_',
+                    '',
+                )
+
+        return [
+            {'code': code, 'name': label}
+            for code, label in sorted(
+                timeframe_map.items(),
+                key=lambda item: item[0],
+            )
+        ]
+
     def quote(self, symbol: str) -> dict[str, Any]:
         self._ensure_connection()
 
@@ -121,6 +142,7 @@ class MarketService:
         symbol: str,
         timeframe: int,
         bars: int = 500,
+        offset: int = 0,
     ) -> pd.DataFrame:
         self._ensure_connection()
 
@@ -149,8 +171,8 @@ class MarketService:
         rates = mt5.copy_rates_from_pos(
             symbol,
             timeframe,
-            0,
-            bars,
+            int(offset),
+            int(bars),
         )
 
         if rates is None or len(rates) == 0:

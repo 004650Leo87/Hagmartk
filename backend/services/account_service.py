@@ -93,13 +93,12 @@ class AccountService:
                 "COMMISSION_AGENT_DAILY",
             mt5.DEAL_TYPE_COMMISSION_AGENT_MONTHLY:
                 "COMMISSION_AGENT_MONTHLY",
-            mt5.DEAL_TYPE_INTEREST: "INTEREST",
+                        mt5.DEAL_TYPE_INTEREST: "INTEREST",
             mt5.DEAL_TYPE_BUY_CANCELED: "BUY_CANCELED",
             mt5.DEAL_TYPE_SELL_CANCELED: "SELL_CANCELED",
-            mt5.DEAL_TYPE_DIVIDEND: "DIVIDEND",
-            mt5.DEAL_TYPE_DIVIDEND_FRANKED:
-                "DIVIDEND_FRANKED",
-            mt5.DEAL_TYPE_TAX: "TAX",
+            getattr(mt5, "DEAL_TYPE_DIVIDEND", 14): "DIVIDEND",
+            getattr(mt5, "DEAL_TYPE_DIVIDEND_FRANKED", 15): "DIVIDEND_FRANKED",
+            getattr(mt5, "DEAL_TYPE_TAX", 16): "TAX",
         }
 
         return deal_types.get(deal_type, "UNKNOWN")
@@ -412,12 +411,10 @@ class AccountService:
         losing_deals = 0
 
         for deal in deals:
-            profit = self._safe_float(deal.profit)
-            deal_commission = self._safe_float(
-                deal.commission
-            )
-            deal_swap = self._safe_float(deal.swap)
-            deal_fee = self._safe_float(deal.fee)
+            profit = self._safe_float(getattr(deal, 'profit', 0.0))
+            deal_commission = self._safe_float(getattr(deal, 'commission', 0.0))
+            deal_swap = self._safe_float(getattr(deal, 'swap', 0.0))
+            deal_fee = self._safe_float(getattr(deal, 'fee', 0.0))
 
             if profit > 0:
                 gross_profit += profit

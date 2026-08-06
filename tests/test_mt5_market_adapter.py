@@ -1,0 +1,154 @@
+"""Adapter contract tests for MT5MarketAdapter and MockMarketAdapter.
+
+These tests do not require a live MT5 terminal. The MT5 adapter tests mock the
+`MetaTrader5` module to validate behavior and error handling.
+"""
+
+import sys
+import types
+from datetime import datetime, timedelta, timezone
+
+import pytest
+
+from backend.engines.market.market_adapter import MockMarketAdapter
+from backend.engines.market.mt5_market_adapter import MT5MarketAdapter, MT5UnavailableError
+
+
+def test_mock_adapter_basic_contract():
+    adapter = MockMarketAdapter()
+
+    adapter.connect()
+    symbols = adapter.get_symbols()
+    assert isinstance(symbols, list) and len(symbols) >= 1
+
+    quote = adapter.get_quote(symbols[0])
+    assert quote.get("symbol") == symbols[0]
+
+    candles = adapter.get_candles(symbols[0], "M5", limit=5)
+    assert isinstance(candles, list)
+
+    adapter.disconnect()
+
+
+def make_fake_mt5_module():
+    fake = types.SimpleNamespace()
+
+    # last_error returns (code, message)
+    fake._last_error = (0, "ok")
+
+    def last_error():
+        return fake._last_error
+
+    def initialize():
+        return True
+
+    def shutdown():
+        return True
+
+    def symbols_get():
+        # return objects with a `name` attribute
+        return [types.SimpleNamespace(name="EURUSD"), types.SimpleNamespace(name="XAUUSD")]
+
+    def symbol_info(name):
+        return types.SimpleNamespace(
+            name=name,
+            description=f"{name} description",
+            path="Forex/major",
+            visible=True,
+            selected=True,
+            digits=5,
+            point=0.00001,
+            currency_base="USD",
+            currency_profit="USD",
+            trade_mode=0,
+        )
+
+    def symbol_info_tick(name):
+        return types.SimpleNamespace(bid=1.1, ask=1.1003, last=1.1002, time=1620000000)
+
+    def symbol_select(name, enable):
+        return True
+
+    def copy_rates_from_pos(symbol, timeframe, pos, count):
+        # return list-like of dicts
+        out = []
+        for i in range(count):
+            out.append({
+                "time": 1620000000 + i,
+                "open": 1.0 + i * 0.1,
+                "high": 1.05 + i * 0.1,
+                "low": 0.95 + i * 0.1,
+                "close": 1.02 + i * 0.1,
+                "tick_volume": 100 + i,
+                "spread": 1,
+                "real_volume": 10 + i,
+            })
+        return out
+
+    def copy_rates_range(symbol, timeframe, from_time, to_time):
+        # return a small range based on seconds
+        seconds = int((to_time - from_time).total_seconds())
+        n = min(10, max(1, seconds // 60))
+        return copy_rates_from_pos(symbol, timeframe, 0, n)
+
+    fake.last_error = last_error
+    fake.initialize = initialize
+    fake.shutdown = shutdown
+    fake.symbols_get = symbols_get
+    fake.symbol_info = symbol_info
+    fake.symbol_info_tick = symbol_info_tick
+    fake.symbol_select = symbol_select
+    fake.copy_rates_from_pos = copy_rates_from_pos
+    fake.copy_rates_range = copy_rates_range
+
+    return fake
+
+
+def test_mt5_adapter_with_mocked_mt5(monkeypatch):
+    fake_mt5 = make_fake_mt5_module()
+
+    # inject fake module
+    sys.modules["MetaTrader5"] = fake_mt5
+
+    adapter = MT5MarketAdapter()
+
+    # connection
+    adapter.connect()
+
+    symbols = adapter.get_symbols()
+    assert isinstance(symbols, list)
+    assert any(s.get("name") == "EURUSD" for s in symbols)
+
+    quote = adapter.get_quote("EURUSD")
+    assert quote["symbol"] == "EURUSD"
+
+    # by count
+    candles = adapter.get_candles("EURUSD", 5, count=3)
+    assert isinstance(candles, list) and len(candles) == 3
+
+    # by range
+    now = datetime.now(timezone.utc)
+    then = now - timedelta(minutes=10)
+    candles_range = adapter.get_candles("EURUSD", 5, from_time=then, to_time=now)
+    assert isinstance(candles_range, list)
+
+    adapter.disconnect()
+
+    # cleanup fake
+    del sys.modules["MetaTrader5"]
+
+
+def test_mt5_adapter_raises_when_mt5_missing():
+    # ensure MetaTrader5 not in sys.modules
+    if "MetaTrader5" in sys.modules:
+        del sys.modules["MetaTrader5"]
+    # If MetaTrader5 is installed in the environment the import will succeed
+    # and raising an error is not expected. In that case skip this assertion
+    # to make the test environment-agnostic.
+    try:
+        import MetaTrader5  # type: ignore
+    except Exception:
+        with pytest.raises(MT5UnavailableError):
+            MT5MarketAdapter()._load_mt5()
+    else:
+        pytest.skip("MetaTrader5 is installed in the environment; skipping missing-module assertion")

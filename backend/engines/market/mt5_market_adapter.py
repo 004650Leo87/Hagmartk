@@ -1,0 +1,277 @@
+"""MetaTrader 5 adapter for the Hagmartk Market Engine.
+
+This adapter implements the MarketAdapter interface using the official
+`MetaTrader5` Python package. The module avoids importing `MetaTrader5` at
+module import time: the library is loaded lazily inside methods so unit tests
+can import this module without a live MT5 installation.
+
+Design notes:
+- The adapter validates connection state and raises explicit RuntimeError
+  with `mt5.last_error()` when available.
+- The adapter does not fabricate data — when MT5 returns no data an error is
+  raised instead of returning empty or synthetic values.
+- The adapter returns UTC timestamps in ISO 8601 format.
+"""
+
+from __future__ import annotations
+
+from typing import Any, Dict, List, Optional
+from datetime import datetime, timezone
+
+from .market_adapter import MarketAdapter
+from backend.core.exceptions import (
+    AdapterUnavailableError,
+    AdapterConnectionError,
+    AdapterError,
+)
+
+# Backwards-compatible alias for older tests and imports
+MT5UnavailableError = AdapterUnavailableError
+
+
+class MT5MarketAdapter(MarketAdapter):
+    """Adapter implementation backed by MetaTrader5.
+
+    Methods load the `MetaTrader5` module on demand so the codebase can be
+    imported in environments that do not have the native library installed.
+    """
+
+    def __init__(self) -> None:
+        self._connected = False
+
+    def _load_mt5(self):
+        try:
+            import MetaTrader5 as mt5
+
+            return mt5
+        except Exception as error:
+            raise AdapterUnavailableError(
+                "MetaTrader5 library is not available in this environment",
+                name="MetaTrader5",
+                details=str(error),
+            ) from error
+
+    def connect(self) -> None:
+        mt5 = self._load_mt5()
+
+        if self._connected:
+            return
+
+        if mt5.initialize():
+            self._connected = True
+            return
+
+        last = getattr(mt5, "last_error", lambda: None)()
+        raise AdapterConnectionError(f"mt5.initialize failed: {last}")
+
+    def disconnect(self) -> None:
+        mt5 = self._load_mt5()
+
+        try:
+            mt5.shutdown()
+        finally:
+            self._connected = False
+
+    def get_symbols(self) -> List[Dict[str, Any]]:
+        mt5 = self._load_mt5()
+
+        symbols = mt5.symbols_get()
+
+        if symbols is None:
+            last = getattr(mt5, "last_error", lambda: None)()
+            raise AdapterError(f"mt5.symbols_get returned no data: {last}")
+
+        result: List[Dict[str, Any]] = []
+
+        for s in symbols:
+            # symbol object shape may vary; we attempt to read common attrs
+            name = getattr(s, "name", None) or getattr(s, "_name", None) or str(s)
+
+            info = mt5.symbol_info(name)
+
+            if info is None:
+                # fallback minimal representation
+                result.append({"name": name})
+                continue
+
+            result.append(
+                {
+                    "name": name,
+                    "description": getattr(info, "description", "") or "",
+                    "path": getattr(info, "path", "") or "",
+                    "visible": bool(getattr(info, "visible", False)),
+                    "selected": bool(getattr(info, "selected", False)),
+                    "digits": int(getattr(info, "digits", 0)),
+                    "point": float(getattr(info, "point", 0.0)),
+                    "currency_base": getattr(info, "currency_base", "") or "",
+                    "currency_profit": getattr(info, "currency_profit", "") or "",
+                    "trade_mode": getattr(info, "trade_mode", None),
+                }
+            )
+
+        return result
+
+    def get_supported_timeframes(self) -> Dict[int, str]:
+        mt5 = self._load_mt5()
+
+        # Common MT5 timeframe constants mapped to short names
+        mapping = {}
+        for name in dir(mt5):
+            if name.startswith("TIMEFRAME_"):
+                val = getattr(mt5, name)
+                mapping[val] = name.replace("TIMEFRAME_", "")
+
+        return mapping
+
+    def get_connection_info(self) -> Dict[str, Any]:
+        mt5 = self._load_mt5()
+
+        info = {}
+        try:
+            term = getattr(mt5, "terminal_info", lambda: None)()
+            if term is not None:
+                info["company"] = getattr(term, "company", None)
+                info["build"] = getattr(term, "build", None)
+            info["connected"] = bool(self._connected)
+        except Exception:
+            info["connected"] = bool(self._connected)
+
+        return info
+
+    def get_quote(self, symbol: str) -> Dict[str, Any]:
+        mt5 = self._load_mt5()
+
+        symbol = symbol.upper().strip()
+
+        info = mt5.symbol_info(symbol)
+
+        if info is None:
+            last = getattr(mt5, "last_error", lambda: None)()
+            raise AdapterError(f"Symbol not found: {symbol} ({last})")
+
+        if not info.visible:
+            selected = mt5.symbol_select(symbol, True)
+            if not selected:
+                last = getattr(mt5, "last_error", lambda: None)()
+                raise AdapterError(f"Failed to select symbol '{symbol}': {last}")
+
+        tick = mt5.symbol_info_tick(symbol)
+
+        if tick is None:
+            last = getattr(mt5, "last_error", lambda: None)()
+            raise AdapterError(f"Failed to get tick for '{symbol}': {last}")
+
+        bid = float(getattr(tick, "bid", 0.0))
+        ask = float(getattr(tick, "ask", 0.0))
+        last_price = float(getattr(tick, "last", 0.0))
+
+        point = float(getattr(info, "point", 0.0))
+
+        spread_points = 0.0
+        if point > 0:
+            spread_points = (ask - bid) / point
+
+        tick_time = datetime.fromtimestamp(getattr(tick, "time", 0), tz=timezone.utc).isoformat()
+
+        return {
+            "symbol": symbol,
+            "bid": bid,
+            "ask": ask,
+            "last": last_price,
+            "spread": round(ask - bid, getattr(info, "digits", 0)),
+            "spread_points": round(spread_points, 2),
+            "digits": int(getattr(info, "digits", 0)),
+            "point": point,
+            "time": tick_time,
+        }
+
+    def get_candles(
+        self,
+        symbol: str,
+        timeframe: Any,
+        count: Optional[int] = None,
+        from_time: Optional[datetime] = None,
+        to_time: Optional[datetime] = None,
+    ) -> List[Dict[str, Any]]:
+        """Return candles for a symbol.
+
+        Parameters:
+        - `symbol`: instrument symbol
+        - `timeframe`: MT5 timeframe constant (e.g. mt5.TIMEFRAME_M5)
+        - `count`: number of most recent candles to return (if provided)
+        - `from_time`/`to_time`: datetime range (UTC) to fetch historical candles
+
+        The adapter preserves UTC timestamps and returns full historical data
+        when requested. Display layers can still limit how many candles are
+        shown to the user, but this method delivers raw historical data.
+        """
+        mt5 = self._load_mt5()
+
+        symbol = symbol.upper().strip()
+
+        info = mt5.symbol_info(symbol)
+        if info is None:
+            last = getattr(mt5, "last_error", lambda: None)()
+            raise AdapterError(f"Symbol not found: {symbol} ({last})")
+
+        if not info.visible:
+            selected = mt5.symbol_select(symbol, True)
+            if not selected:
+                last = getattr(mt5, "last_error", lambda: None)()
+                raise AdapterError(f"Failed to select symbol '{symbol}': {last}")
+
+        # Choose fetching method depending on parameters
+        rates = None
+
+        if from_time is not None or to_time is not None:
+            if from_time is None or to_time is None:
+                raise ValueError("Both from_time and to_time must be provided for range queries")
+
+            # MT5 expects datetime objects (aware or naive) — we pass UTC datetimes
+            rates = mt5.copy_rates_range(symbol, timeframe, from_time, to_time)
+        elif count is not None:
+            # fetch last `count` bars
+            rates = mt5.copy_rates_from_pos(symbol, timeframe, 0, int(count))
+        else:
+            # default: fetch a reasonable amount (e.g. 500) but do not impose
+            # a permanent limitation — callers can always request more.
+            rates = mt5.copy_rates_from_pos(symbol, timeframe, 0, 500)
+
+        if rates is None or len(rates) == 0:
+            last = getattr(mt5, "last_error", lambda: None)()
+            raise AdapterError(f"No candle data for '{symbol}': {last}")
+
+        candles: List[Dict[str, Any]] = []
+
+        for r in rates:
+            # r may be a numpy.record or object with attributes
+            time_val = getattr(r, "time", None) if not isinstance(r, dict) else r.get("time")
+            timestamp = (
+                datetime.fromtimestamp(time_val, tz=timezone.utc).isoformat()
+                if time_val is not None
+                else None
+            )
+
+            open_v = getattr(r, "open", None) if not isinstance(r, dict) else r.get("open")
+            high_v = getattr(r, "high", None) if not isinstance(r, dict) else r.get("high")
+            low_v = getattr(r, "low", None) if not isinstance(r, dict) else r.get("low")
+            close_v = getattr(r, "close", None) if not isinstance(r, dict) else r.get("close")
+
+            tick_volume = getattr(r, "tick_volume", None) if not isinstance(r, dict) else r.get("tick_volume")
+            spread = getattr(r, "spread", None) if not isinstance(r, dict) else r.get("spread")
+            real_volume = getattr(r, "real_volume", None) if not isinstance(r, dict) else r.get("real_volume")
+
+            candles.append(
+                {
+                    "time": timestamp,
+                    "open": open_v,
+                    "high": high_v,
+                    "low": low_v,
+                    "close": close_v,
+                    "tick_volume": tick_volume,
+                    "spread": spread,
+                    "real_volume": real_volume,
+                }
+            )
+
+        return candles

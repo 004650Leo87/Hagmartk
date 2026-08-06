@@ -51,10 +51,19 @@ export async function getQuotes() {
   return apiRequest('/market/quotes');
 }
 
+export async function getTimeframes() {
+  return apiRequest('/market/timeframes');
+}
+
+export async function getSystemHealth() {
+  return apiRequest('/system/health');
+}
+
 export async function getCandles(
   symbol,
   timeframe,
   bars = 300,
+  offset = 0,
 ) {
   if (!symbol) {
     throw new Error('O ativo não foi informado.');
@@ -67,6 +76,7 @@ export async function getCandles(
   }
 
   parameters.set('bars', String(bars));
+  parameters.set('offset', String(offset));
 
   return apiRequest(
     `/market/candles/${encodeURIComponent(

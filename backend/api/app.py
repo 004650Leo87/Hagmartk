@@ -3,6 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.api.routes import router
 
+from backend.bootstrap import create_system, start_system, shutdown_system
+import os
+from datetime import datetime, timezone
+
 
 app = FastAPI(
     title="Hagmartk API",
@@ -41,3 +45,29 @@ def health():
     return {
         "status": "ok",
     }
+
+
+@app.on_event("startup")
+def _startup_system():
+    """Create the system components and optionally start the kernel.
+
+    Controlled by the `HAGMARTK_AUTOSTART` environment variable. Default
+    is to create components but not start them to keep test imports side-effect
+    free.
+    """
+    adapter_mode = os.environ.get("HAGMARTK_MARKET_ADAPTER")
+    system = create_system(adapter_mode=adapter_mode)
+    app.state.system = system
+    app.state.started_at = None
+
+    autostart = os.environ.get("HAGMARTK_AUTOSTART", "0") == "1"
+    if autostart:
+        start_system(system)
+        app.state.started_at = datetime.now(timezone.utc)
+
+
+@app.on_event("shutdown")
+def _shutdown_system():
+    system = getattr(app.state, "system", None)
+    if system is not None:
+        shutdown_system(system)

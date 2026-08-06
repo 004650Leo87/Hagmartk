@@ -42,3 +42,32 @@ export function prepareCandles(response) {
         .filter(Boolean)
         .sort((a, b) => a.time - b.time);
 }
+
+export function mergeCandles(existingCandles = [], newCandles = []) {
+    const map = new Map();
+
+    for (const candle of existingCandles) {
+        if (candle && typeof candle.time === 'number') {
+            map.set(candle.time, candle);
+        }
+    }
+
+    for (const candle of newCandles) {
+        if (candle && typeof candle.time === 'number') {
+            map.set(candle.time, candle);
+        }
+    }
+
+    const merged = Array.from(map.values()).sort((a, b) => a.time - b.time);
+
+    let addedBeforeCount = 0;
+    if (existingCandles.length > 0) {
+        const oldMinTime = existingCandles[0].time;
+        addedBeforeCount = merged.filter((c) => c.time < oldMinTime).length;
+    }
+
+    return {
+        merged,
+        addedBeforeCount,
+    };
+}
