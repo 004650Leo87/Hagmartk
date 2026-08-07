@@ -85,6 +85,61 @@ export async function getCandles(
   );
 }
 
+export async function getIndicators(
+  symbol,
+  timeframe,
+  bars = 500,
+  offset = 0,
+  rsi = '14',
+  ema = '50,200',
+  sma = null,
+) {
+  if (!symbol) {
+    throw new Error('O ativo não foi informado.');
+  }
+
+  const parameters = new URLSearchParams();
+
+  if (timeframe !== undefined && timeframe !== null) {
+    parameters.set('timeframe', String(timeframe));
+  }
+
+  parameters.set('bars', String(bars));
+  parameters.set('offset', String(offset));
+
+  if (rsi) parameters.set('rsi', String(rsi));
+  if (ema) parameters.set('ema', String(ema));
+  if (sma) parameters.set('sma', String(sma));
+
+  return apiRequest(
+    `/market/indicators/${encodeURIComponent(
+      symbol,
+    )}?${parameters.toString()}`,
+  );
+}
+
+export async function getDivergences(
+  symbol,
+  timeframe = 'M15',
+  bars = 500,
+  offset = 0,
+) {
+  if (!symbol) {
+    throw new Error('O ativo não foi informado.');
+  }
+
+  const parameters = new URLSearchParams();
+  parameters.set('timeframe', String(timeframe));
+  parameters.set('bars', String(bars));
+  parameters.set('offset', String(offset));
+
+  return apiRequest(
+    `/strategy-lab/divergences/${encodeURIComponent(
+      symbol,
+    )}?${parameters.toString()}`,
+  );
+}
+
 /* =====================================================
    CONTA
 ===================================================== */

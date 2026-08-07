@@ -1,14 +1,19 @@
 from fastapi import APIRouter, HTTPException, Request
 from typing import Any, Dict
 
+from backend.schemas.backtest import BacktestRequest
 from backend.services.account_service import AccountService
+from backend.services.backtest_service import BacktestService
 from backend.services.market_service import MarketService
+from backend.services.strategy_service import StrategyService
 
 
 router = APIRouter()
 
 market = MarketService()
 account = AccountService()
+strategy_service = StrategyService()
+backtest_service = BacktestService()
 
 
 # =========================================================
@@ -27,6 +32,21 @@ def get_symbols():
         raise HTTPException(
             status_code=500,
             detail=f"Erro ao carregar os ativos: {error}",
+        ) from error
+
+
+@router.get("/market/symbols/detailed")
+def get_symbols_detailed():
+    """
+    Retorna o catálogo detalhado de ativos com metadados e categorias.
+    """
+    try:
+        return market.detailed_symbols()
+
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro ao carregar o catálogo de ativos detalhados: {error}",
         ) from error
 
 
@@ -153,6 +173,100 @@ def get_candles(
         ) from error
 
 
+@router.get("/market/candles/{symbol}/detailed")
+def get_candles_detailed(
+    symbol: str,
+    timeframe: int | None = None,
+    bars: int = 500,
+    offset: int = 0,
+):
+    """
+    Retorna histórico de candles estruturado com estatísticas e metadados para o Strategy Lab.
+    """
+    if bars < 1:
+        raise HTTPException(status_code=400, detail="A quantidade de candles deve ser maior que zero.")
+
+    if timeframe is None:
+        try:
+            import MetaTrader5 as mt5
+
+            timeframe = mt5.TIMEFRAME_M5
+        except Exception:
+            timeframe = 5
+
+    try:
+        return market.candles_detailed(
+            symbol=symbol,
+            timeframe=timeframe,
+            bars=bars,
+            offset=offset,
+        )
+
+    except ValueError as error:
+        raise HTTPException(
+            status_code=404,
+            detail=str(error),
+        ) from error
+
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro ao carregar o histórico detalhado: {error}",
+        ) from error
+
+
+@router.get("/market/indicators/{symbol}")
+def get_market_indicators(
+    symbol: str,
+    timeframe: int | None = None,
+    bars: int = 500,
+    offset: int = 0,
+    rsi: str | None = "14",
+    ema: str | None = "50,200",
+    sma: str | None = None,
+):
+    """
+    Retorna candles e indicadores técnicos (RSI, EMA, SMA) rigorosamente alinhados por timestamp.
+    """
+    if bars < 1:
+        raise HTTPException(status_code=400, detail="A quantidade de candles deve ser maior que zero.")
+
+    if timeframe is None:
+        try:
+            import MetaTrader5 as mt5
+
+            timeframe = mt5.TIMEFRAME_M5
+        except Exception:
+            timeframe = 5
+
+    def parse_periods(param: str | None) -> list[int]:
+        if not param:
+            return []
+        try:
+            return [int(p.strip()) for p in param.split(",") if p.strip()]
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Parâmetro de período inválido: {param}")
+
+    rsi_periods = parse_periods(rsi)
+    ema_periods = parse_periods(ema)
+    sma_periods = parse_periods(sma)
+
+    try:
+        return market.get_indicators(
+            symbol=symbol,
+            timeframe=timeframe,
+            bars=bars,
+            offset=offset,
+            rsi_periods=rsi_periods,
+            ema_periods=ema_periods,
+            sma_periods=sma_periods,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=f"Erro ao calcular indicadores: {error}") from error
+
+
 @router.get("/system/health")
 def system_health(request: Request) -> Dict[str, Any]:
     """Return live system health including kernel, engines and adapter info.
@@ -181,6 +295,18 @@ def system_health(request: Request) -> Dict[str, Any]:
         # Check connected flag if present
         mt5_connected = bool(getattr(adapter, "_connected", getattr(adapter, "connected", False)))
 
+        # Fallback: check live MetaTrader 5 terminal status if adapter._connected flag is False
+        if not mt5_connected:
+            try:
+                import MetaTrader5 as mt5
+
+                term_info = mt5.terminal_info()
+                acc_info = mt5.account_info()
+                if term_info is not None or acc_info is not None:
+                    mt5_connected = True
+            except Exception:
+                pass
+
         try:
             import time
 
@@ -190,6 +316,8 @@ def system_health(request: Request) -> Dict[str, Any]:
             latency_ms = (t1 - t0) * 1000
             if isinstance(symbols, (list, tuple)):
                 symbol_count = len(symbols)
+                if symbol_count > 0:
+                    mt5_connected = True
                 from datetime import datetime, timezone
 
                 last_update = datetime.now(timezone.utc).isoformat()
@@ -198,6 +326,8 @@ def system_health(request: Request) -> Dict[str, Any]:
                 conn_info = adapter.get_connection_info()
                 broker_name = conn_info.get("company") or conn_info.get("name")
                 terminal_status = conn_info.get("connected")
+                if terminal_status:
+                    mt5_connected = True
             except Exception:
                 broker_name = None
                 terminal_status = None
@@ -297,3 +427,148 @@ def get_account_history_today():
             status_code=500,
             detail=f"Erro ao carregar o histórico diário: {error}",
         ) from error
+
+
+# =========================================================
+# ROTAS DO STRATEGY LAB & BACKTEST
+# =========================================================
+
+@router.get("/api/strategies")
+def list_strategies():
+    """
+    Lista todas as estratégias registradas no Strategy Lab.
+    """
+    try:
+        return strategy_service.list_strategies()
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro ao listar estratégias: {error}",
+        ) from error
+
+
+@router.get("/api/strategies/{strategy_id}")
+def get_strategy_details(strategy_id: str, version: str | None = None):
+    """
+    Retorna os detalhes e metadados de uma estratégia.
+    """
+    strat = strategy_service.get_strategy(strategy_id, version)
+    if not strat:
+        raise HTTPException(status_code=404, detail=f"Estratégia '{strategy_id}' não encontrada.")
+    return strat
+
+
+@router.post("/api/backtest/run")
+def run_backtest_experiment(req: BacktestRequest):
+    """
+    Executa um experimento de backtest bar-by-bar (sem lookahead bias).
+    """
+    try:
+        return backtest_service.run_backtest(
+            strategy_id=req.strategy_id,
+            symbol=req.symbol,
+            timeframe=req.timeframe,
+            bars=req.bars,
+            offset=req.offset,
+            intrabar_policy=req.intrabar_policy,
+            spread_points=req.spread_points,
+            commission_per_trade=req.commission_per_trade,
+            slippage_points=req.slippage_points,
+            in_sample_ratio=req.in_sample_ratio,
+            version=req.version,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=f"Erro durante o backtest: {error}") from error
+
+
+@router.get("/api/backtest/experiments")
+def list_experiments():
+    """
+    Lista todos os experimentos de backtest realizados nesta sessão.
+    """
+    try:
+        return backtest_service.list_experiments()
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=f"Erro ao listar experimentos: {error}") from error
+
+
+@router.get("/api/backtest/experiments/{experiment_id}")
+def get_experiment_by_id(experiment_id: str):
+    """
+    Retorna um experimento específico por seu identificador único.
+    """
+    exp = backtest_service.get_experiment(experiment_id)
+    if not exp:
+        raise HTTPException(status_code=404, detail=f"Experimento '{experiment_id}' não encontrado.")
+    return exp
+
+
+@router.get("/strategy-lab/divergences/{symbol}")
+def detect_divergences(
+    symbol: str,
+    timeframe: str = "M15",
+    bars: int = 500,
+    offset: int = 0,
+    pivot_left: int = 2,
+    pivot_right: int = 2,
+    min_bars_between: int = 5,
+    max_bars_between: int = 50,
+):
+    """
+    Detecta e retorna as divergências Nível 1 (HDM 0.1.0) para pesquisa e evidência visual.
+    """
+    tf_upper = timeframe.upper().strip()
+    from backend.core.constants import SUPPORTED_TIMEFRAMES
+    from backend.strategies.hdm_divergence import HDMDivergenceStrategy
+
+    tf_code = SUPPORTED_TIMEFRAMES.get(tf_upper)
+    if tf_code is None:
+        raise HTTPException(status_code=400, detail=f"Timeframe '{timeframe}' não é suportado.")
+
+    strategy = HDMDivergenceStrategy(
+        pivot_left=pivot_left,
+        pivot_right=pivot_right,
+        min_bars_between_pivots=min_bars_between,
+        max_bars_between_pivots=max_bars_between,
+    )
+
+    if not strategy.validate_timeframe(tf_upper):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Timeframe '{tf_upper}' não é permitido para detecção HDM. Permitidos: {strategy.allowed_timeframes}",
+        )
+
+    try:
+        df = market.candles(symbol, tf_code, bars=bars + strategy.warmup_bars, offset=offset)
+        events = []
+        for t_idx in range(strategy.warmup_bars, len(df)):
+            history_t = df.iloc[: t_idx + 1]
+            found = strategy.evaluate(history_t, symbol, tf_upper, is_closed_bar=True)
+            for evt in found:
+                events.append(
+                    {
+                        "strategy_id": evt.strategy_id,
+                        "strategy_version": evt.strategy_version,
+                        "symbol": evt.symbol,
+                        "timeframe": evt.timeframe,
+                        "direction": evt.direction.value,
+                        "detected_at": evt.detected_at,
+                        "reference_price": evt.reference_price,
+                        "reasons": evt.reasons,
+                        "metadata": evt.metadata,
+                    }
+                )
+
+        return {
+            "symbol": symbol,
+            "timeframe": tf_upper,
+            "parameters": strategy.parameters,
+            "events": events,
+            "count": len(events),
+        }
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=f"Erro na detecção de divergências: {error}") from error

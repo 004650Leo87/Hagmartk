@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
 import MarketChart from './components/MarketChart';
@@ -252,6 +253,34 @@ function App() {
   const initialSelectedSymbolRef = useRef(selectedSymbol);
   const initialSelectedTimeframeRef = useRef(selectedTimeframe);
 
+  const DEFAULT_FAVORITES = ['M1', 'M5', 'M15', 'H1', 'H4', 'D1'];
+  const FAVORITES_STORAGE_KEY = 'hagmartk.favoriteTimeframes';
+
+  const [favoriteTimeframes, setFavoriteTimeframes] = useState(() => {
+    try {
+      const stored = localStorage.getItem(FAVORITES_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return DEFAULT_FAVORITES;
+  });
+
+  const [timeframeDrawerOpen, setTimeframeDrawerOpen] = useState(false);
+  const timeframeToggleRef = useRef(null);
+  const timeframePopupRef = useRef(null);
+  const [drawerPopupPos, setDrawerPopupPos] = useState({ top: 0, left: 0 });
+
+  const [showRSI, setShowRSI] = useState(false);
+  const [showEMA50, setShowEMA50] = useState(false);
+  const [showEMA200, setShowEMA200] = useState(false);
+  const [showDivergences, setShowDivergences] = useState(false);
+
   const [symbols, setSymbols] = useState([]);
   const [loadingSymbols, setLoadingSymbols] = useState(true);
   const [symbolsError, setSymbolsError] = useState('');
@@ -261,6 +290,7 @@ function App() {
 
   const [systemHealth, setSystemHealth] = useState(null);
   const [systemHealthError, setSystemHealthError] = useState('');
+  const [systemMonitorOpen, setSystemMonitorOpen] = useState(false);
 
   const [quotes, setQuotes] = useState([]);
   const [loadingQuotes, setLoadingQuotes] = useState(true);
@@ -580,6 +610,49 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        FAVORITES_STORAGE_KEY,
+        JSON.stringify(favoriteTimeframes),
+      );
+    } catch {
+      // ignore
+    }
+  }, [favoriteTimeframes]);
+
+  useEffect(() => {
+    if (!timeframeDrawerOpen) return undefined;
+
+    function handleClickOutside(e) {
+      const clickedToggle = timeframeToggleRef.current?.contains(e.target);
+      const clickedPopup = timeframePopupRef.current?.contains(e.target);
+      if (!clickedToggle && !clickedPopup) {
+        setTimeframeDrawerOpen(false);
+      }
+    }
+
+    function handleKeyDown(e) {
+      if (e.key === 'Escape') {
+        setTimeframeDrawerOpen(false);
+      }
+    }
+
+    function handleCloseOnResize() {
+      setTimeframeDrawerOpen(false);
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('resize', handleCloseOnResize);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('resize', handleCloseOnResize);
+    };
+  }, [timeframeDrawerOpen]);
+
   const markets = useMemo(() => {
     return quotes.length > 0 ? quotes : fallbackMarkets;
   }, [quotes]);
@@ -716,82 +789,88 @@ function App() {
         </nav>
 
         <div className="system-monitor">
-          <div className="system-monitor-header">
-            <span className="status-light" />
+          <div
+            className={`system-monitor-header ${!systemMonitorOpen ? 'is-closed' : ''}`}
+            onClick={() => setSystemMonitorOpen((prev) => !prev)}
+            style={{ cursor: 'pointer', userSelect: 'none' }}
+          >
+            <span className={`status-light ${marketAdapterConnected ? 'online' : 'offline'}`} />
             <strong>Sistema operacional</strong>
+            <span className="system-monitor-toggle" style={{ marginLeft: 'auto', fontSize: '10px', opacity: 0.7 }}>
+              {systemMonitorOpen ? '▲' : '▼'}
+            </span>
           </div>
 
-          <div className="system-monitor-body">
-            <div>
-              <span>Adaptador MT5</span>
+          {systemMonitorOpen && (
+            <div className="system-monitor-body">
+              <div>
+                <span>Adaptador MT5</span>
 
-              <strong
-                className={
-                  marketAdapterConnected ? 'online' : 'offline'
-                }
-              >
-                {marketAdapterConnected ? 'On-line' : 'Off-line'}
-              </strong>
+                <strong
+                  className={
+                    marketAdapterConnected ? 'online' : 'offline'
+                  }
+                >
+                  {marketAdapterConnected ? 'On-line' : 'Off-line'}
+                </strong>
+              </div>
+
+              <div>
+                <span>API</span>
+
+                <strong
+                  className={
+                    apiConnected ? 'online' : 'offline'
+                  }
+                >
+                  {apiConnected ? 'Conectada' : 'Aguardando'}
+                </strong>
+              </div>
+
+              <div>
+                <span>Conta</span>
+                <strong>{account?.login || '--'}</strong>
+              </div>
+
+              <div>
+                <span>Servidor</span>
+                <strong>{account?.server || '--'}</strong>
+              </div>
+
+              {account?.leverage ? (
+                <div>
+                  <span>Alavancagem</span>
+                  <strong>1:{account.leverage}</strong>
+                </div>
+              ) : null}
+
+              <div>
+                <span>Ativos</span>
+                <strong>{symbolsAvailable}</strong>
+              </div>
+
+              <div>
+                <span>Tempo</span>
+                <strong>
+                  {timeframes.length > 0
+                    ? timeframes.length
+                    : '--'}
+                </strong>
+              </div>
+
+              <div>
+                <span>Última verificação</span>
+                <strong>
+                  {systemHealth?.last_symbol_update || '--'}
+                </strong>
+              </div>
+
+              <div>
+                <span>Atualização</span>
+                <strong>3s</strong>
+              </div>
             </div>
-
-            <div>
-              <span>API</span>
-
-              <strong
-                className={
-                  apiConnected ? 'online' : 'offline'
-                }
-              >
-                {apiConnected ? 'Conectada' : 'Aguardando'}
-              </strong>
-            </div>
-
-            <div>
-              <span>Conta</span>
-              <strong>{account?.login || '--'}</strong>
-            </div>
-
-            <div>
-              <span>Servidor</span>
-              <strong>{account?.server || '--'}</strong>
-            </div>
-
-            <div>
-              <span>Alavancagem</span>
-
-              <strong>
-                {account?.leverage
-                  ? `1:${account.leverage}`
-                  : '--'}
-              </strong>
-            </div>
-
-            <div>
-              <span>Ativos</span>
-              <strong>{symbolsAvailable}</strong>
-            </div>
-
-            <div>
-              <span>Tempo</span>
-              <strong>
-                {timeframes.length > 0
-                  ? timeframes.length
-                  : '--'}
-              </strong>
-            </div>
-
-            <div>
-              <span>Última verificação</span>
-              <strong>
-                {systemHealth?.last_symbol_update || '--'}
-              </strong>
-            </div>
-
-            <div>
-              <span>Atualização</span>
-              <strong>3s</strong>
-            </div>
-          </div>
+          )}
         </div>
       </aside>
 
@@ -818,24 +897,160 @@ function App() {
               </div>
             </div>
 
-            <div className="timeframe-selector">
-              {timeframeOptions.map((option) => (
-                <button
-                  key={option.name}
-                  type="button"
-                  className={
-                    selectedTimeframe === option.name
-                      ? 'timeframe-button active'
-                      : 'timeframe-button'
-                  }
-                  onClick={() =>
-                    setSelectedTimeframe(option.name)
-                  }
-                >
-                  {option.name}
-                </button>
-              ))}
+            <div className="timeframe-bar">
+              {/* Favoritos na barra */}
+              {timeframeOptions
+                .filter((opt) => favoriteTimeframes.includes(opt.name))
+                .map((option) => (
+                  <button
+                    key={option.name}
+                    type="button"
+                    className={
+                      selectedTimeframe === option.name
+                        ? 'timeframe-button active'
+                        : 'timeframe-button'
+                    }
+                    onClick={() => setSelectedTimeframe(option.name)}
+                    title={option.name}
+                  >
+                    {option.name}
+                  </button>
+                ))}
+
+              {/* Botão de gaveta */}
+              <button
+                ref={timeframeToggleRef}
+                type="button"
+                className={
+                  timeframeDrawerOpen
+                    ? 'timeframe-drawer-toggle active'
+                    : 'timeframe-drawer-toggle'
+                }
+                onClick={() => {
+                  setTimeframeDrawerOpen((prev) => {
+                    const next = !prev;
+                    if (next && timeframeToggleRef.current) {
+                      const rect =
+                        timeframeToggleRef.current.getBoundingClientRect();
+                      setDrawerPopupPos({
+                        top: rect.bottom + 6,
+                        left: rect.left,
+                      });
+                    }
+                    return next;
+                  });
+                }}
+                title="Todos os timeframes"
+              >
+                {selectedTimeframe &&
+                !favoriteTimeframes.includes(selectedTimeframe)
+                  ? selectedTimeframe
+                  : '⋯'}
+                <span className="timeframe-drawer-arrow">
+                  {timeframeDrawerOpen ? '▲' : '▼'}
+                </span>
+              </button>
             </div>
+
+            {/* Portal: popup renderizado direto no document.body para escapar
+                de TODOS os overflow:hidden ancestrais (topbar, workspace).
+                Ancorado via position:fixed + coordenadas do botão. */}
+            {timeframeDrawerOpen &&
+              createPortal(
+                <div
+                  ref={timeframePopupRef}
+                  className="timeframe-drawer-popup"
+                  style={{
+                    position: 'fixed',
+                    top: drawerPopupPos.top,
+                    left: drawerPopupPos.left,
+                    zIndex: 99999,
+                  }}
+                >
+                  {[
+                    {
+                      label: 'Minutos',
+                      items: timeframeOptions.filter((o) =>
+                        o.name.startsWith('M'),
+                      ),
+                    },
+                    {
+                      label: 'Horas',
+                      items: timeframeOptions.filter((o) =>
+                        o.name.startsWith('H'),
+                      ),
+                    },
+                    {
+                      label: 'Diário / Superior',
+                      items: timeframeOptions.filter(
+                        (o) =>
+                          !o.name.startsWith('M') &&
+                          !o.name.startsWith('H'),
+                      ),
+                    },
+                  ]
+                    .filter((group) => group.items.length > 0)
+                    .map((group) => (
+                      <div
+                        key={group.label}
+                        className="tf-drawer-group"
+                      >
+                        <span className="tf-drawer-group-label">
+                          {group.label}
+                        </span>
+
+                        {group.items.map((opt) => (
+                          <div
+                            key={opt.name}
+                            className="tf-drawer-row"
+                          >
+                            <button
+                              type="button"
+                              className={
+                                selectedTimeframe === opt.name
+                                  ? 'tf-drawer-item active'
+                                  : 'tf-drawer-item'
+                              }
+                              onClick={() => {
+                                setSelectedTimeframe(opt.name);
+                                setTimeframeDrawerOpen(false);
+                              }}
+                            >
+                              {opt.name}
+                            </button>
+
+                            <button
+                              type="button"
+                              className={
+                                favoriteTimeframes.includes(opt.name)
+                                  ? 'tf-star active'
+                                  : 'tf-star'
+                              }
+                              onClick={() => {
+                                setFavoriteTimeframes((prev) =>
+                                  prev.includes(opt.name)
+                                    ? prev.filter((f) => f !== opt.name)
+                                    : [...prev, opt.name],
+                                );
+                                setTimeframeDrawerOpen(false);
+                              }}
+                              title={
+                                favoriteTimeframes.includes(opt.name)
+                                  ? 'Remover dos favoritos'
+                                  : 'Adicionar aos favoritos'
+                              }
+                            >
+                              {favoriteTimeframes.includes(opt.name)
+                                ? '★'
+                                : '☆'}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                </div>,
+                document.body,
+              )}
           </div>
 
           <div className="topbar-right">
@@ -1023,6 +1238,52 @@ function App() {
                 </button>
               </div>
 
+              <div className="indicator-toggles">
+                <button
+                  type="button"
+                  className={showRSI ? 'indicator-toggle active' : 'indicator-toggle'}
+                  onClick={() => setShowRSI((prev) => !prev)}
+                  title="Alternar RSI 14"
+                >
+                  RSI 14
+                </button>
+
+                <button
+                  type="button"
+                  className={showEMA50 ? 'indicator-toggle active ema50' : 'indicator-toggle'}
+                  onClick={() => setShowEMA50((prev) => !prev)}
+                  title="Alternar EMA 50"
+                >
+                  EMA 50
+                </button>
+
+                <button
+                  type="button"
+                  className={showEMA200 ? 'indicator-toggle active ema200' : 'indicator-toggle'}
+                  onClick={() => setShowEMA200((prev) => !prev)}
+                  title="Alternar EMA 200"
+                >
+                  EMA 200
+                </button>
+
+                <button
+                  type="button"
+                  className={showDivergences ? 'indicator-toggle active hdm' : 'indicator-toggle'}
+                  onClick={() => {
+                    setShowDivergences((prev) => {
+                      const next = !prev;
+                      if (next && !showRSI) {
+                        setShowRSI(true); // Ativa o RSI para exibir a evidência no RSI
+                      }
+                      return next;
+                    });
+                  }}
+                  title="Alternar Evidências de Divergência HDM"
+                >
+                  ⚡ HDM
+                </button>
+              </div>
+
               <div className="chart-toolbar-status">
                 <span>Dados reais do MetaTrader</span>
                 <strong>{selectedTimeframe}</strong>
@@ -1035,6 +1296,10 @@ function App() {
                 timeframe={selectedTimeframe}
                 timeframeMap={timeframeMap}
                 refreshInterval={2000}
+                showRSI={showRSI}
+                showEMA50={showEMA50}
+                showEMA200={showEMA200}
+                showDivergences={showDivergences}
               />
             </div>
           </section>

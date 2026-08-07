@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 
 from .market_adapter import MarketAdapter
+from backend.core.constants import categorize_symbol
 from backend.core.exceptions import (
     AdapterUnavailableError,
     AdapterConnectionError,
@@ -91,14 +92,20 @@ class MT5MarketAdapter(MarketAdapter):
 
             if info is None:
                 # fallback minimal representation
-                result.append({"name": name})
+                result.append({"name": name, "symbol": name, "category": "OTHER", "broker_path": ""})
                 continue
+
+            path = getattr(info, "path", "") or ""
+            desc = getattr(info, "description", "") or ""
 
             result.append(
                 {
+                    "symbol": name,
                     "name": name,
-                    "description": getattr(info, "description", "") or "",
-                    "path": getattr(info, "path", "") or "",
+                    "description": desc,
+                    "path": path,
+                    "broker_path": path,
+                    "category": categorize_symbol(path, name, desc),
                     "visible": bool(getattr(info, "visible", False)),
                     "selected": bool(getattr(info, "selected", False)),
                     "digits": int(getattr(info, "digits", 0)),
@@ -106,6 +113,12 @@ class MT5MarketAdapter(MarketAdapter):
                     "currency_base": getattr(info, "currency_base", "") or "",
                     "currency_profit": getattr(info, "currency_profit", "") or "",
                     "trade_mode": getattr(info, "trade_mode", None),
+                    "spread": getattr(info, "spread", 0),
+                    "volume_min": float(getattr(info, "volume_min", 0.0)),
+                    "volume_max": float(getattr(info, "volume_max", 0.0)),
+                    "volume_step": float(getattr(info, "volume_step", 0.0)),
+                    "margin_initial": float(getattr(info, "margin_initial", 0.0)),
+                    "trade_contract_size": float(getattr(info, "trade_contract_size", 0.0)),
                 }
             )
 
