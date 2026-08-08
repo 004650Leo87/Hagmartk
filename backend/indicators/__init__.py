@@ -1,3 +1,4 @@
+from .atr import ATRIndicator
 from .base import BaseIndicator, IndicatorRegistry
 from .moving_averages import EMAIndicator, SMAIndicator
 from .rsi import RSIIndicator
@@ -6,6 +7,7 @@ from .rsi import RSIIndicator
 IndicatorRegistry.register("rsi", RSIIndicator)
 IndicatorRegistry.register("ema", EMAIndicator)
 IndicatorRegistry.register("sma", SMAIndicator)
+IndicatorRegistry.register("atr", ATRIndicator)
 
 __all__ = [
     "BaseIndicator",
@@ -13,4 +15,6 @@ __all__ = [
     "RSIIndicator",
     "EMAIndicator",
     "SMAIndicator",
+    "ATRIndicator",
 ]
+

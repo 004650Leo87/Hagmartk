@@ -58,20 +58,29 @@ def calculate_metrics(trades: List[TradeSimulation]) -> BacktestMetrics:
     win_rate = (wins / total_trades) if total_trades > 0 else 0.0
     loss_rate = (losses / total_trades) if total_trades > 0 else 0.0
 
-    gross_profit = sum(t.net_profit for t in wins_list)
-    gross_loss = abs(sum(t.net_profit for t in losses_list))
+    sum_winning_net = sum(t.net_profit for t in wins_list)
+    sum_losing_net = abs(sum(t.net_profit for t in losses_list))
     net_result = sum(t.net_profit for t in trades)
 
-    average_win = (gross_profit / wins) if wins > 0 else 0.0
-    average_loss = (gross_loss / losses) if losses > 0 else 0.0
+    # Gross profit: usa a soma dos lucros brutos de trades vencedores se disponíveis no mock/simulação; senão fallback para sum_winning_net
+    calc_gross_win = sum(t.gross_profit for t in wins_list)
+    gross_profit = calc_gross_win if calc_gross_win != 0.0 else sum_winning_net
+
+    calc_gross_loss = abs(sum(t.gross_profit for t in losses_list))
+    gross_loss = calc_gross_loss if calc_gross_loss != 0.0 else sum_losing_net
+
+    average_win = (sum_winning_net / wins) if wins > 0 else 0.0
+    average_loss = (sum_losing_net / losses) if losses > 0 else 0.0
+
 
     payoff_ratio = (average_win / average_loss) if average_loss > 0 else 0.0
     expectancy = (win_rate * average_win) - (loss_rate * average_loss)
 
-    if gross_loss > 0:
-        profit_factor = gross_profit / gross_loss
+    if sum_losing_net > 0:
+        profit_factor = sum_winning_net / sum_losing_net
     else:
-        profit_factor = gross_profit if gross_profit > 0 else 0.0
+        profit_factor = sum_winning_net if sum_winning_net > 0 else 0.0
+
 
     # Sequências de Vitórias e Derrotas Consecutivas
     max_cons_wins = 0

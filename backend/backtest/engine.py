@@ -80,7 +80,14 @@ class BacktestEngine:
         n_bars = len(df)
         simulations = []
 
+        max_positions = getattr(self.strategy, "max_concurrent_positions_per_symbol", None)
+        active_until_idx = -1
+
         for t_idx in range(warmup, n_bars - 1):
+            # Se a estratégia limita 1 posição por ativo e há uma posição ativa, pula a barra T
+            if max_positions == 1 and t_idx < active_until_idx:
+                continue
+
             # Fatia contendo ESTRITAMENTE as barras de 0 até t_idx
             history_t = df.iloc[: t_idx + 1].copy()
 
@@ -104,8 +111,13 @@ class BacktestEngine:
                     future_candles=future_candles,
                     costs=self.costs,
                     policy=self.intrabar_policy,
+                    full_df=df,
+                    entry_index=t_idx,
                 )
                 simulations.append(simulation)
+                if simulation.duration_bars > 0:
+                    active_until_idx = t_idx + simulation.duration_bars
+
 
         experiment.simulations = simulations
 
