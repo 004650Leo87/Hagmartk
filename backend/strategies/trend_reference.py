@@ -35,7 +35,8 @@ class HagmartkTrendReferenceStrategy(BaseStrategy):
             "Estratégia mecânica de referência baseada em Donchian 55/20 e ATR 20 de Wilder "
             "(Turtle System 2 simplificado)."
         )
-        self.allowed_timeframes = allowed_timeframes or ["D1"]
+        # EXPANSÃO DO DOMÍNIO DE TESTE, NÃO ALTERAÇÃO DA REGRA DE TRADING
+        self.allowed_timeframes = allowed_timeframes or ["M15", "H1", "H4", "D1"]
         self.max_concurrent_positions_per_symbol = 1
 
         self.entry_lookback = entry_lookback

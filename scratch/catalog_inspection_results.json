@@ -1,0 +1,1193 @@
+{
+  "summary": {
+    "processed": 117,
+    "d1_probe_ok": 117,
+    "no_d1_history": 0,
+    "inactive": 0,
+    "errors": 0,
+    "categories": {
+      "FOREX": 64,
+      "METALS": 0,
+      "ENERGY": 2,
+      "INDICES": 0,
+      "CRYPTO": 15,
+      "STOCKS": 0,
+      "OTHER": 36
+    },
+    "total_symbols": 117,
+    "elapsed_seconds": 1422.05
+  },
+  "phase_a": [
+    {
+      "symbol": "AUDCAD",
+      "description": "Australian Dollar vs Canadian Dollar",
+      "category": "FOREX",
+      "path": "Forex\\AUDCAD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "AUDCHF",
+      "description": "Australian Dollar vs Swiss Franc",
+      "category": "FOREX",
+      "path": "Forex\\AUDCHF",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "AUDJPY",
+      "description": "Australian Dollar vs Japanese Yen",
+      "category": "FOREX",
+      "path": "Forex\\AUDJPY",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "AUDNZD",
+      "description": "Australian Dollar vs New Zealand Dollar",
+      "category": "FOREX",
+      "path": "Forex\\AUDNZD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "AUDUSD",
+      "description": "Australian Dollar vs US Dollar",
+      "category": "FOREX",
+      "path": "Forex\\AUDUSD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "CADCHF",
+      "description": "Canadian Dollar vs Swiss Franc",
+      "category": "FOREX",
+      "path": "Forex\\CADCHF",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "CADJPY",
+      "description": "Canadian Dollar vs Japanese Yen",
+      "category": "FOREX",
+      "path": "Forex\\CADJPY",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "CHFJPY",
+      "description": "Swiss Franc vs Japanese Yen",
+      "category": "FOREX",
+      "path": "Forex\\CHFJPY",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "EURAUD",
+      "description": "Euro vs Australian Dollar",
+      "category": "FOREX",
+      "path": "Forex\\EURAUD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "EURCAD",
+      "description": "Euro vs Canadian Dollar",
+      "category": "FOREX",
+      "path": "Forex\\EURCAD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "EURCHF",
+      "description": "Euro vs Swiss Franc",
+      "category": "FOREX",
+      "path": "Forex\\EURCHF",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "EURCZK",
+      "description": "Euro vs Czech Koruna",
+      "category": "FOREX",
+      "path": "Forex\\EURCZK",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "EURDKK",
+      "description": "Euro vs Danish Krone",
+      "category": "FOREX",
+      "path": "Forex\\EURDKK",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "EURGBP",
+      "description": "Euro vs Great Britain Pound ",
+      "category": "FOREX",
+      "path": "Forex\\EURGBP",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "EURHKD",
+      "description": "Euro vs Hong Kong Dollar",
+      "category": "FOREX",
+      "path": "Forex\\EURHKD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "EURHUF",
+      "description": "Euro vs Hungarian Forint",
+      "category": "FOREX",
+      "path": "Forex\\EURHUF",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "EURJPY",
+      "description": "Euro vs Japanese Yen",
+      "category": "FOREX",
+      "path": "Forex\\EURJPY",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "EURMXN",
+      "description": "Euro vs Mexican Pesos",
+      "category": "FOREX",
+      "path": "Forex\\EURMXN",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "EURNOK",
+      "description": "Euro vs Norwegian Kroner",
+      "category": "FOREX",
+      "path": "Forex\\EURNOK",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "EURNZD",
+      "description": "Euro vs New Zealand Dollar",
+      "category": "FOREX",
+      "path": "Forex\\EURNZD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "EURPLN",
+      "description": "Euro vs Polish Zloty",
+      "category": "FOREX",
+      "path": "Forex\\EURPLN",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "EURSEK",
+      "description": "Euro vs Swedish Kroner",
+      "category": "FOREX",
+      "path": "Forex\\EURSEK",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "EURSGD",
+      "description": "Euro vs Singapore Dollar",
+      "category": "FOREX",
+      "path": "Forex\\EURSGD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "EURTRY",
+      "description": "Euro vs Turkish Lira",
+      "category": "FOREX",
+      "path": "Forex\\EURTRY",
+      "visible": true,
+      "trade_mode": 3,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "EURUSD",
+      "description": "Euro vs US Dollar",
+      "category": "FOREX",
+      "path": "Forex\\EURUSD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "EURZAR",
+      "description": "Euro vs South African Rand",
+      "category": "FOREX",
+      "path": "Forex\\EURZAR",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "GBPAUD",
+      "description": "Great Britain Pound vs Australian Dollar",
+      "category": "FOREX",
+      "path": "Forex\\GBPAUD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "GBPCAD",
+      "description": "Great Britain Pound vs Canadian Dollar",
+      "category": "FOREX",
+      "path": "Forex\\GBPCAD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "GBPCHF",
+      "description": "Great Britain Pound vs Swiss Franc",
+      "category": "FOREX",
+      "path": "Forex\\GBPCHF",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "GBPCZK",
+      "description": "Great Britain Pound vs Czech Koruna",
+      "category": "FOREX",
+      "path": "Forex\\GBPCZK",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "GBPDKK",
+      "description": "British Pound vs Danish Krone",
+      "category": "FOREX",
+      "path": "Forex\\GBPDKK",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "GBPHKD",
+      "description": "British Pound vs Hong Kong Dollar",
+      "category": "FOREX",
+      "path": "Forex\\GBPHKD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "GBPHUF",
+      "description": "British Pound vs Hungarian Forint",
+      "category": "FOREX",
+      "path": "Forex\\GBPHUF",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "GBPJPY",
+      "description": "British Pound vs Japanese Yen",
+      "category": "FOREX",
+      "path": "Forex\\GBPJPY",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "GBPNOK",
+      "description": "British Pound vs Norwegian Kroner",
+      "category": "FOREX",
+      "path": "Forex\\GBPNOK",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "GBPNZD",
+      "description": "Great Britain Pound vs New Zealand Dollar",
+      "category": "FOREX",
+      "path": "Forex\\GBPNZD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "GBPPLN",
+      "description": "British Pound vs Polish Zloty",
+      "category": "FOREX",
+      "path": "Forex\\GBPPLN",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "GBPSEK",
+      "description": "British Pound vs Swedish Krona",
+      "category": "FOREX",
+      "path": "Forex\\GBPSEK",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "GBPTRY",
+      "description": "British Pound vs Turkish Lira",
+      "category": "FOREX",
+      "path": "Forex\\GBPTRY",
+      "visible": true,
+      "trade_mode": 3,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "GBPUSD",
+      "description": "Great British Pound vs US Dollar",
+      "category": "FOREX",
+      "path": "Forex\\GBPUSD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "GBPZAR",
+      "description": "British Pound vs South African Rand",
+      "category": "FOREX",
+      "path": "Forex\\GBPZAR",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "NZDCAD",
+      "description": "New Zealand Dollar vs Canadian Dollar",
+      "category": "FOREX",
+      "path": "Forex\\NZDCAD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "NZDCHF",
+      "description": "New Zealand Dollar vs Swiss Franc",
+      "category": "FOREX",
+      "path": "Forex\\NZDCHF",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "NZDJPY",
+      "description": "New Zealand Dollar vs Japanese Yen",
+      "category": "FOREX",
+      "path": "Forex\\NZDJPY",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "NZDSGD",
+      "description": "New Zealand Dollar vs Singapore Dollar",
+      "category": "FOREX",
+      "path": "Forex\\NZDSGD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "NZDUSD",
+      "description": "New Zealand Dollar vs US Dollar",
+      "category": "FOREX",
+      "path": "Forex\\NZDUSD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "USDCAD",
+      "description": "US Dollar vs Canadian Dollar",
+      "category": "FOREX",
+      "path": "Forex\\USDCAD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "USDCHF",
+      "description": "US Dollar vs Swiss Franc",
+      "category": "FOREX",
+      "path": "Forex\\USDCHF",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "USDCNH",
+      "description": "US Dollar vs Chinese Yuan",
+      "category": "FOREX",
+      "path": "Forex\\USDCNH",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "USDCZK",
+      "description": "US Dollar vs Czech Koruna",
+      "category": "FOREX",
+      "path": "Forex\\USDCZK",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "USDDKK",
+      "description": "US Dollar vs Danish Krone",
+      "category": "FOREX",
+      "path": "Forex\\USDDKK",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "USDHKD",
+      "description": "US Dollar vs Hong Kong Dollar",
+      "category": "FOREX",
+      "path": "Forex\\USDHKD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "USDHUF",
+      "description": "US Dollar vs Hungarian Forint",
+      "category": "FOREX",
+      "path": "Forex\\USDHUF",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "USDJPY",
+      "description": "US Dollar vs Japanese Yen",
+      "category": "FOREX",
+      "path": "Forex\\USDJPY",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "USDMXN",
+      "description": "US Dollar vs Mexican Peso",
+      "category": "FOREX",
+      "path": "Forex\\USDMXN",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "USDNOK",
+      "description": "US Dollar vs Norwegian Krone",
+      "category": "FOREX",
+      "path": "Forex\\USDNOK",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "USDPLN",
+      "description": "US Dollar vs Polish Zloty",
+      "category": "FOREX",
+      "path": "Forex\\USDPLN",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "USDSEK",
+      "description": "US Dollar vs Swedish Krona",
+      "category": "FOREX",
+      "path": "Forex\\USDSEK",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "USDSGD",
+      "description": "US Dollar vs Singapore Dollar",
+      "category": "FOREX",
+      "path": "Forex\\USDSGD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "USDTRY",
+      "description": "US Dollar vs Turkish Lira",
+      "category": "FOREX",
+      "path": "Forex\\USDTRY",
+      "visible": true,
+      "trade_mode": 3,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "USDZAR",
+      "description": "US Dollar vs South African Rand",
+      "category": "FOREX",
+      "path": "Forex\\USDZAR",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "XAGUSD",
+      "description": "Silver vs US Dollar ",
+      "category": "FOREX",
+      "path": "Forex\\XAGUSD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "XAUUSD",
+      "description": "Gold vs US Dollar ",
+      "category": "FOREX",
+      "path": "Forex\\XAUUSD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "XAUEUR",
+      "description": "Gold vs. Euro",
+      "category": "FOREX",
+      "path": "Forex\\XAUEUR",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "AFRICA40",
+      "description": "South Africa JSE Top 40 Stock Index",
+      "category": "OTHER",
+      "path": "CFD\\AFRICA40",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "AUS200",
+      "description": "Australia 200 Stock Index",
+      "category": "OTHER",
+      "path": "CFD\\AUS200",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "FRANCE40",
+      "description": "France 40 Stock Index",
+      "category": "OTHER",
+      "path": "CFD\\FRANCE40",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "HK50",
+      "description": "Hong Kong 50 Stock Index",
+      "category": "OTHER",
+      "path": "CFD\\HK50",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "SPAIN35",
+      "description": "Spain 35 Stock Index",
+      "category": "OTHER",
+      "path": "CFD\\SPAIN35",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "STOXX50",
+      "description": "EU Stocks 50 Index",
+      "category": "OTHER",
+      "path": "CFD\\STOXX50",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "SWISS20",
+      "description": "Switzerland 20 Stock Index",
+      "category": "OTHER",
+      "path": "CFD\\SWISS20",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "UK100",
+      "description": "UK 100 Index",
+      "category": "OTHER",
+      "path": "CFD\\UK100",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "JP225",
+      "description": "Japan 225 Index",
+      "category": "OTHER",
+      "path": "CFD\\JP225",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "COPPER",
+      "description": "Copper",
+      "category": "OTHER",
+      "path": "CFD\\COPPER",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "ALUMINIUM",
+      "description": "Aluminium",
+      "category": "OTHER",
+      "path": "CFD\\ALUMINIUM",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "DXY",
+      "description": "Dollar Index",
+      "category": "OTHER",
+      "path": "CFD\\DXY",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "LEAD",
+      "description": "Lead",
+      "category": "OTHER",
+      "path": "CFD\\LEAD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "NICKEL",
+      "description": "Nickel",
+      "category": "OTHER",
+      "path": "CFD\\NICKEL",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "NL25",
+      "description": "Netherlands 25 Index",
+      "category": "OTHER",
+      "path": "CFD\\NL25",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "SG20",
+      "description": "Singapore 20 Index",
+      "category": "OTHER",
+      "path": "CFD\\SG20",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "VIX",
+      "description": "Volatility Index",
+      "category": "OTHER",
+      "path": "CFD\\VIX",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "ZINC",
+      "description": "Zinc",
+      "category": "OTHER",
+      "path": "CFD\\ZINC",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "COCOA",
+      "description": "Cocoa",
+      "category": "OTHER",
+      "path": "CFD\\COCOA",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "COFFEE",
+      "description": "Coffee Arabica",
+      "category": "OTHER",
+      "path": "CFD\\COFFEE",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "WHEAT",
+      "description": "Wheat",
+      "category": "OTHER",
+      "path": "CFD\\WHEAT",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "PALLADIUM",
+      "description": "Palladium",
+      "category": "OTHER",
+      "path": "CFD\\PALLADIUM",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "PLATINUM",
+      "description": "Platinum",
+      "category": "OTHER",
+      "path": "CFD\\PLATINUM",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "CORN",
+      "description": "Corn",
+      "category": "OTHER",
+      "path": "CFD\\CORN",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "SOYBEANS",
+      "description": "Soybeans",
+      "category": "OTHER",
+      "path": "CFD\\SOYBEANS",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "SUGAR.L",
+      "description": "Sugar - London No. 5",
+      "category": "OTHER",
+      "path": "CFD\\SUGAR.L",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "DE40",
+      "description": "Germany 40 Index",
+      "category": "OTHER",
+      "path": "CFD-2\\DE40",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "US30",
+      "description": "US Wall Street 30 Index",
+      "category": "OTHER",
+      "path": "CFD-2\\US30",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "US500",
+      "description": "US SPX 500 Index",
+      "category": "OTHER",
+      "path": "CFD-2\\US500",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "USTEC",
+      "description": "US Tech 100 Index",
+      "category": "OTHER",
+      "path": "CFD-2\\USTEC",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "NAT.GAS",
+      "description": "Natural Gas",
+      "category": "OTHER",
+      "path": "CFD-2\\NAT.GAS",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "USDBRL",
+      "description": "US Dollar vs Brazilian Real",
+      "category": "OTHER",
+      "path": "CFD-2\\USDBRL",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "CHINA50",
+      "description": "FTSE China A50 Index ",
+      "category": "OTHER",
+      "path": "CFD-2\\CHINA50",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "US2000",
+      "description": "Russell 2000 Index",
+      "category": "OTHER",
+      "path": "CFD-2\\US2000",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "USDKRW",
+      "description": "US Dollar vs South Korean won",
+      "category": "OTHER",
+      "path": "CFD-2\\USDKRW",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "BRENT",
+      "description": "Brent Crude Oil",
+      "category": "ENERGY",
+      "path": "CFD-Crude-Oil\\BRENT",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "XTIUSD",
+      "description": "XTI Crude Oil",
+      "category": "ENERGY",
+      "path": "CFD-Crude-Oil\\XTIUSD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "BTCUSD",
+      "description": "Bitcoin",
+      "category": "CRYPTO",
+      "path": "Cryptos\\BTCUSD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "ETHUSD",
+      "description": "Ethereum",
+      "category": "CRYPTO",
+      "path": "Cryptos\\ETHUSD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "LTCUSD",
+      "description": "Litecoin",
+      "category": "CRYPTO",
+      "path": "Cryptos\\LTCUSD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "XRPUSD",
+      "description": "Ripple",
+      "category": "CRYPTO",
+      "path": "Cryptos\\XRPUSD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "ADAUSD",
+      "description": "Cardano",
+      "category": "CRYPTO",
+      "path": "Cryptos\\ADAUSD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "LINKUSD",
+      "description": "Chainlink",
+      "category": "CRYPTO",
+      "path": "Cryptos\\LINKUSD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "XLMUSD",
+      "description": "Stellar",
+      "category": "CRYPTO",
+      "path": "Cryptos\\XLMUSD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "SOLUSD",
+      "description": "Solana",
+      "category": "CRYPTO",
+      "path": "Cryptos\\SOLUSD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "BCHUSD",
+      "description": "Bitcoin Cash",
+      "category": "CRYPTO",
+      "path": "Cryptos\\BCHUSD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "DOGEUSD",
+      "description": "Dogecoin",
+      "category": "CRYPTO",
+      "path": "Cryptos\\DOGEUSD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "MATICUSD",
+      "description": "Polygon",
+      "category": "CRYPTO",
+      "path": "Cryptos\\MATICUSD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "TRUMPUSD",
+      "description": "Official Trump",
+      "category": "CRYPTO",
+      "path": "Cryptos\\TRUMPUSD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "SUIUSD",
+      "description": "SUI",
+      "category": "CRYPTO",
+      "path": "Cryptos\\SUIUSD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "AVAXUSD",
+      "description": "Avalanche",
+      "category": "CRYPTO",
+      "path": "Cryptos\\AVAXUSD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "DOTUSD",
+      "description": "Polkadot",
+      "category": "CRYPTO",
+      "path": "Cryptos\\DOTUSD",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    },
+    {
+      "symbol": "XAUUSD.24-7",
+      "description": "Gold vs US Dollar",
+      "category": "OTHER",
+      "path": "24-7\\XAUUSD.24-7",
+      "visible": true,
+      "trade_mode": 4,
+      "is_active": true,
+      "status": "PROBE_OK"
+    }
+  ],
+  "phase_b": []
+}
