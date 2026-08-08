@@ -1,0 +1,10 @@
+{
+  "source_broker": "Pepperstone_MT5",
+  "symbol": "XAUUSD",
+  "timeframe": "D1",
+  "start_timestamp": "2010-08-08 00:00:00",
+  "end_timestamp": "2026-08-07 00:00:00",
+  "candle_count": 4321,
+  "dataset_hash": "971fdd9b2d52b9122f453c23fa8cee9d7a08b96ac9fa1e4513a2d00e735332a6",
+  "created_at": "2026-08-08T19:39:57.296036+00:00"
+}

@@ -1,0 +1,10 @@
+{
+  "source_broker": "Pepperstone_MT5",
+  "symbol": "BTCUSD",
+  "timeframe": "D1",
+  "start_timestamp": "2011-03-24 00:00:00",
+  "end_timestamp": "2026-08-08 00:00:00",
+  "candle_count": 5001,
+  "dataset_hash": "962d4579cc1845d3620dec8f2c40f8504a115be2dfcf76fd4a673b4c33474048",
+  "created_at": "2026-08-08T19:40:34.562881+00:00"
+}

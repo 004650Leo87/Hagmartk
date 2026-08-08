@@ -1,0 +1,10 @@
+{
+  "source_broker": "Pepperstone_MT5",
+  "symbol": "EURUSD",
+  "timeframe": "D1",
+  "start_timestamp": "2000-12-25 00:00:00",
+  "end_timestamp": "2026-08-07 00:00:00",
+  "candle_count": 7084,
+  "dataset_hash": "d7e4452cc633a5a2ed4455ef5ef44b170c4dce488ebb6918a91b97e0b949d1c8",
+  "created_at": "2026-08-08T19:40:34.074091+00:00"
+}
