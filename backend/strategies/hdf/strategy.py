@@ -225,6 +225,7 @@ class HDFStrategy(BaseStrategy):
                                     occ.bars_to_activation = k - t
                                     occ.temporal_model.entry_at = str(times[k])
                                     occ.temporal_model.activation_time = str(times[k])
+                                    occ.metadata["activation_bar_index"] = k
 
                                     # ---------------------------------------------------
                                     # A) RAW EXCURSION (Sem Stop Loss precoce)
@@ -382,6 +383,7 @@ class HDFStrategy(BaseStrategy):
                                     occ.bars_to_activation = k - t
                                     occ.temporal_model.entry_at = str(times[k])
                                     occ.temporal_model.activation_time = str(times[k])
+                                    occ.metadata["activation_bar_index"] = k
 
                                     # RAW EXCURSION
                                     fwd_df = df.iloc[k : min(k + 20, n)]
