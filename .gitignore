@@ -17,6 +17,11 @@ env/
 # Environment variables
 .env
 
+# Data Cache Local
+data_cache/*.csv
+data_cache/*_meta.json
+scratch/test_cache/
+
 # OS
 .DS_Store
 Thumbs.db

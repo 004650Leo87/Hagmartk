@@ -66,7 +66,6 @@ def test_2_vectorized_indicator_equivalence():
     # Equivalência de Donchian (sem Lookahead)
     u_ent, l_ent, u_ex, l_ex = calculate_vectorized_donchian(df, entry_period=55, exit_period=20)
     assert len(u_ent) == len(df)
-    # Verifica que o Donchian 55 no candle T usou exatamente os 55 candles anteriores
     expected_u_55 = df["high"].iloc[:55].max()
     assert u_ent.iloc[55] == expected_u_55
 
@@ -75,7 +74,6 @@ def test_3_stage1_screening_and_promotion_criteria():
     criteria = FunnelPromotionCriteria(min_trades=10, min_profit_factor=1.1, enabled=True)
     df = create_test_df(100)
 
-    # Mocks de trades para testar aprovação e rejeição
     from backend.backtest.simulator import CostsConfig, IntrabarPolicy, TradeSimulation
     from backend.domain.events import Direction, StrategyEvent
 
@@ -101,7 +99,7 @@ def test_4_event_study_record_and_engine():
     base_events = [{"name": "TEST_EVENT", "time": df["time"].iloc[10], "price": df["close"].iloc[10]}]
 
     def mock_evaluator(sub_df, evt):
-        return len(sub_df) >= 15  # Confirma 5 barras depois
+        return len(sub_df) >= 15
 
     records = EventStudyEngine.analyze_event_sequence(df, base_events, confirmation_evaluator_fn=mock_evaluator)
     assert len(records) == 1
@@ -117,3 +115,28 @@ def test_5_factor_pipeline_strategy_architecture():
     assert strat.strategy_id == "factor_pipeline_dvap_didi"
     assert strat.parameters["use_dvap"] is True
     assert strat.parameters["use_didi"] is True
+
+
+def test_6_cache_integrity_edge_cases():
+    cache = OHLCDataCache(cache_dir="scratch/test_cache")
+    df = create_test_df(100)
+    meta = cache.save(df, "GBPUSD", "H1")
+
+    # A. save -> load preserva dataset_hash
+    loaded_df, loaded_meta = cache.load("GBPUSD", "H1")
+    assert loaded_df is not None
+    assert loaded_meta.dataset_hash == meta.dataset_hash
+
+    # B. Float round-trip não gera falso corruption ao salvar/carregar
+    loaded_hash = cache.compute_dataset_hash(loaded_df)
+    assert loaded_hash == meta.dataset_hash
+
+    # C. Alteração real no OHLC altera o hash
+    df_mod = loaded_df.copy()
+    df_mod.loc[0, "close"] += 999.0
+    mod_hash = cache.compute_dataset_hash(df_mod)
+    assert mod_hash != meta.dataset_hash
+
+    # D. Dataset alterado é rejeitado com hash esperado
+    rejected_df, _ = cache.load("GBPUSD", "H1", expected_hash="wrong_hash")
+    assert rejected_df is None

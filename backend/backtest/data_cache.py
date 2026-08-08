@@ -54,10 +54,13 @@ class OHLCDataCache:
         """Salva a série OHLC bruta e seus metadados no cache local."""
         data_path, meta_path = self.get_cache_paths(symbol, timeframe)
 
-        dataset_hash = self.compute_dataset_hash(df)
-        t_start = str(df["time"].iloc[0])
-        t_end = str(df["time"].iloc[-1])
-        cnt = len(df)
+        df.to_csv(data_path, index=False)
+        df_saved = pd.read_csv(data_path)
+        dataset_hash = self.compute_dataset_hash(df_saved)
+
+        t_start = str(df_saved["time"].iloc[0])
+        t_end = str(df_saved["time"].iloc[-1])
+        cnt = len(df_saved)
 
         meta = DatasetMetadata(
             source_broker=source_broker,
@@ -70,7 +73,6 @@ class OHLCDataCache:
             created_at=pd.Timestamp.now(tz="UTC").isoformat(),
         )
 
-        df.to_csv(data_path, index=False)
         with open(meta_path, "w", encoding="utf-8") as f:
             json.dump(meta.__dict__, f, indent=2)
 
