@@ -17,9 +17,13 @@ _store = ShadowStoreRepository()
 _scanner = ShadowScannerManager(store=_store)
 _performance_engine = ShadowPerformanceEngine(store=_store)
 from backend.services.shadow_intelligence import ShadowIntelligenceEngine
+from backend.services.shadow_decision_evidence import ShadowDecisionEvidenceEngine
+from backend.services.shadow_observation_engine import ShadowObservationEngine
 
 _stat_engine = ShadowStatisticalValidationEngine(perf_engine=_performance_engine)
 _intel_engine = ShadowIntelligenceEngine(store=_store, perf_engine=_performance_engine, stat_engine=_stat_engine)
+_evidence_engine = ShadowDecisionEvidenceEngine(store=_store, intel_engine=_intel_engine)
+_obs_engine = ShadowObservationEngine(store=_store, decision_engine=_evidence_engine)
 
 
 @router.get("/forward-validation")
@@ -47,6 +51,60 @@ def get_shadow_intelligence(candidate_id: str = Query("hdf_dvp_exit_2r")) -> Dic
     """Retorna o relatório consolidado das 9 camadas de Inteligência e Validação Prospectiva (READ-ONLY)."""
     snapshot = _intel_engine.build_intelligence_snapshot(candidate_id=candidate_id)
     return snapshot.to_dict()
+
+
+@router.get("/evidence")
+def get_shadow_evidence(candidate_id: str = Query("hdf_dvp_exit_2r")) -> Dict[str, Any]:
+    """Retorna a classificação determinística da Decision & Evidence Layer V1 (READ-ONLY)."""
+    evidence_obj = _evidence_engine.evaluate_evidence(candidate_id=candidate_id)
+    return evidence_obj.to_dict()
+
+
+@router.get("/observation/health")
+def get_shadow_observation_health(candidate_id: str = Query("hdf_dvp_exit_2r")) -> Dict[str, Any]:
+    """Retorna a saúde agregada da observação prospectiva (39 combinações, READ-ONLY)."""
+    return _obs_engine.get_observation_health(candidate_id=candidate_id)
+
+
+@router.get("/observation/progress")
+def get_shadow_observation_progress(candidate_id: str = Query("hdf_dvp_exit_2r")) -> Dict[str, Any]:
+    """Retorna o progresso do acúmulo da amostra prospectiva por combinação (READ-ONLY)."""
+    return _obs_engine.get_accumulation_progress(candidate_id=candidate_id)
+
+
+@router.get("/observation/history")
+def get_shadow_observation_history(
+    candidate_id: str = Query("hdf_dvp_exit_2r"),
+    symbol: Optional[str] = Query(None),
+    timeframe: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+) -> Dict[str, Any]:
+    """Retorna o histórico de observações e transições de evidência gravadas (READ-ONLY)."""
+    observations = _store.get_prospective_observations(
+        candidate_id=candidate_id, symbol=symbol, timeframe=timeframe, limit=limit
+    )
+    transitions = _store.get_evidence_transitions(
+        candidate_id=candidate_id, symbol=symbol, timeframe=timeframe, limit=limit
+    )
+    return {
+        "candidate_id": candidate_id,
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "observations": observations,
+        "transitions": transitions,
+    }
+
+
+@router.get("/observation/{symbol}/{timeframe}")
+def get_shadow_observation_drilldown(
+    symbol: str,
+    timeframe: str,
+    candidate_id: str = Query("hdf_dvp_exit_2r"),
+) -> Dict[str, Any]:
+    """Retorna o drill-down detalhado de observação prospectiva para um par específico (READ-ONLY)."""
+    return _obs_engine.get_combination_drilldown(
+        symbol=symbol.upper(), timeframe=timeframe.upper(), candidate_id=candidate_id
+    )
 
 
 @router.get("/status")

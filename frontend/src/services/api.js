@@ -273,3 +273,26 @@ export async function getShadowTelemetry(candidateId = 'hdf_dvp_exit_2r') {
 export async function getShadowIntelligence(candidateId = 'hdf_dvp_exit_2r') {
   return apiRequest(`/api/shadow/intelligence?candidate_id=${encodeURIComponent(candidateId)}`);
 }
+
+export async function getShadowEvidence(candidateId = 'hdf_dvp_exit_2r') {
+  return apiRequest(`/api/shadow/evidence?candidate_id=${encodeURIComponent(candidateId)}`);
+}
+
+export async function getShadowObservationHealth(candidateId = 'hdf_dvp_exit_2r') {
+  return apiRequest(`/api/shadow/observation/health?candidate_id=${encodeURIComponent(candidateId)}`);
+}
+
+export async function getShadowObservationProgress(candidateId = 'hdf_dvp_exit_2r') {
+  return apiRequest(`/api/shadow/observation/progress?candidate_id=${encodeURIComponent(candidateId)}`);
+}
+
+export async function getShadowObservationHistory(candidateId = 'hdf_dvp_exit_2r', symbol = null, timeframe = null) {
+  let url = `/api/shadow/observation/history?candidate_id=${encodeURIComponent(candidateId)}`;
+  if (symbol) url += `&symbol=${encodeURIComponent(symbol)}`;
+  if (timeframe) url += `&timeframe=${encodeURIComponent(timeframe)}`;
+  return apiRequest(url);
+}
+
+export async function getShadowObservationDrilldown(symbol, timeframe, candidateId = 'hdf_dvp_exit_2r') {
+  return apiRequest(`/api/shadow/observation/${encodeURIComponent(symbol)}/${encodeURIComponent(timeframe)}?candidate_id=${encodeURIComponent(candidateId)}`);
+}

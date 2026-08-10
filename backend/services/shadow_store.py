@@ -146,6 +146,48 @@ class ShadowStoreRepository:
             )
             """)
 
+            # Tabela shadow_prospective_observations para acúmulo prospectivo confiável
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS shadow_prospective_observations (
+                observation_id TEXT PRIMARY KEY,
+                candidate_id TEXT NOT NULL,
+                candidate_version TEXT NOT NULL,
+                parameter_hash TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                asset_class TEXT NOT NULL,
+                timeframe TEXT NOT NULL,
+                window_time TEXT NOT NULL,
+                observational_status TEXT NOT NULL,
+                evidence_state TEXT NOT NULL,
+                reason_codes_json TEXT NOT NULL,
+                sample_size INTEGER DEFAULT 0,
+                scanner_coverage REAL,
+                expectancy_r REAL,
+                win_rate REAL,
+                profit_factor REAL,
+                max_drawdown REAL,
+                quality_context TEXT NOT NULL,
+                degraded_flag INTEGER DEFAULT 0,
+                contradictions_json TEXT,
+                observed_at TEXT NOT NULL,
+                UNIQUE(candidate_id, symbol, timeframe, window_time)
+            )
+            """)
+
+            # Tabela shadow_evidence_transitions para histórico de transição de evidência
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS shadow_evidence_transitions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                candidate_id TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                timeframe TEXT NOT NULL,
+                from_state TEXT NOT NULL,
+                to_state TEXT NOT NULL,
+                reason_code TEXT NOT NULL,
+                transitioned_at TEXT NOT NULL
+            )
+            """)
+
             conn.commit()
 
     def save_shadow_session(self, candidate_id: str, started_at: str, enabled: bool = True) -> None:
@@ -605,3 +647,189 @@ class ShadowStoreRepository:
                 },
                 "combinations": combinations_telemetry,
             }
+
+    def record_prospective_observation(
+        self,
+        candidate_id: str,
+        candidate_version: str,
+        parameter_hash: str,
+        symbol: str,
+        asset_class: str,
+        timeframe: str,
+        window_time: str,
+        observational_status: str,
+        evidence_state: str,
+        reason_codes: List[str],
+        sample_size: int,
+        scanner_coverage: Optional[float],
+        expectancy_r: Optional[float],
+        win_rate: Optional[float],
+        profit_factor: Optional[float],
+        max_drawdown: Optional[float],
+        quality_context: str,
+        degraded_flag: bool = False,
+        contradictions: Optional[List[str]] = None,
+        observed_at: Optional[str] = None,
+    ) -> bool:
+        """Persiste uma observação prospectiva de forma idempotente e rastreia transições de estado de evidência."""
+        from backend.core.time_utils import now_utc_str
+        ts_now = observed_at or now_utc_str()
+        obs_id = f"obs_{candidate_id}_{symbol}_{timeframe}_{window_time.replace(':', '-').replace(' ', '_')}"
+        reason_codes_json = json.dumps(reason_codes)
+        contradictions_json = json.dumps(contradictions or [])
+
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+
+            # Verificar última transição de estado gravada para esta combinação
+            cursor.execute(
+                """SELECT to_state FROM shadow_evidence_transitions
+                   WHERE candidate_id = ? AND symbol = ? AND timeframe = ?
+                   ORDER BY id DESC LIMIT 1""",
+                (candidate_id, symbol, timeframe),
+            )
+            row = cursor.fetchone()
+            last_state = row[0] if row else None
+
+            if last_state != evidence_state:
+                cursor.execute(
+                    """INSERT INTO shadow_evidence_transitions
+                       (candidate_id, symbol, timeframe, from_state, to_state, reason_code, transitioned_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        candidate_id,
+                        symbol,
+                        timeframe,
+                        last_state or "UNINITIALIZED",
+                        evidence_state,
+                        reason_codes[0] if reason_codes else "STATE_CHANGE",
+                        ts_now,
+                    ),
+                )
+
+            # Gravar observação de forma idempotente (INSERT OR IGNORE por UNIQUE candidate_id, symbol, timeframe, window_time)
+            cursor.execute(
+                """INSERT OR IGNORE INTO shadow_prospective_observations
+                   (observation_id, candidate_id, candidate_version, parameter_hash, symbol, asset_class,
+                    timeframe, window_time, observational_status, evidence_state, reason_codes_json,
+                    sample_size, scanner_coverage, expectancy_r, win_rate, profit_factor, max_drawdown,
+                    quality_context, degraded_flag, contradictions_json, observed_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    obs_id,
+                    candidate_id,
+                    candidate_version,
+                    parameter_hash,
+                    symbol,
+                    asset_class,
+                    timeframe,
+                    window_time,
+                    observational_status,
+                    evidence_state,
+                    reason_codes_json,
+                    sample_size,
+                    scanner_coverage,
+                    expectancy_r,
+                    win_rate,
+                    profit_factor,
+                    max_drawdown,
+                    quality_context,
+                    1 if degraded_flag else 0,
+                    contradictions_json,
+                    ts_now,
+                ),
+            )
+            inserted = cursor.rowcount > 0
+            conn.commit()
+            return inserted
+
+    def get_prospective_observations(
+        self,
+        candidate_id: str = "hdf_dvp_exit_2r",
+        symbol: Optional[str] = None,
+        timeframe: Optional[str] = None,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """Retorna histórico de observações prospectivas registradas."""
+        query = "SELECT * FROM shadow_prospective_observations WHERE candidate_id = ?"
+        params: List[Any] = [candidate_id]
+
+        if symbol:
+            query += " AND symbol = ?"
+            params.append(symbol)
+        if timeframe:
+            query += " AND timeframe = ?"
+            params.append(timeframe)
+
+        query += " ORDER BY observed_at DESC LIMIT ?"
+        params.append(limit)
+
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            result = []
+            for r in rows:
+                result.append({
+                    "observation_id": r["observation_id"],
+                    "candidate_id": r["candidate_id"],
+                    "candidate_version": r["candidate_version"],
+                    "parameter_hash": r["parameter_hash"],
+                    "symbol": r["symbol"],
+                    "asset_class": r["asset_class"],
+                    "timeframe": r["timeframe"],
+                    "window_time": r["window_time"],
+                    "observational_status": r["observational_status"],
+                    "evidence_state": r["evidence_state"],
+                    "reason_codes": json.loads(r["reason_codes_json"]) if r["reason_codes_json"] else [],
+                    "sample_size": r["sample_size"],
+                    "scanner_coverage": r["scanner_coverage"],
+                    "expectancy_r": r["expectancy_r"],
+                    "win_rate": r["win_rate"],
+                    "profit_factor": r["profit_factor"],
+                    "max_drawdown": r["max_drawdown"],
+                    "quality_context": r["quality_context"],
+                    "degraded_flag": bool(r["degraded_flag"]),
+                    "contradictions": json.loads(r["contradictions_json"]) if r["contradictions_json"] else [],
+                    "observed_at": r["observed_at"],
+                })
+            return result
+
+    def get_evidence_transitions(
+        self,
+        candidate_id: str = "hdf_dvp_exit_2r",
+        symbol: Optional[str] = None,
+        timeframe: Optional[str] = None,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        """Retorna o histórico de transições de evidência registradas."""
+        query = "SELECT * FROM shadow_evidence_transitions WHERE candidate_id = ?"
+        params: List[Any] = [candidate_id]
+
+        if symbol:
+            query += " AND symbol = ?"
+            params.append(symbol)
+        if timeframe:
+            query += " AND timeframe = ?"
+            params.append(timeframe)
+
+        query += " ORDER BY id DESC LIMIT ?"
+        params.append(limit)
+
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            return [
+                {
+                    "id": r["id"],
+                    "candidate_id": r["candidate_id"],
+                    "symbol": r["symbol"],
+                    "timeframe": r["timeframe"],
+                    "from_state": r["from_state"],
+                    "to_state": r["to_state"],
+                    "reason_code": r["reason_code"],
+                    "transitioned_at": r["transitioned_at"],
+                }
+                for r in rows
+            ]

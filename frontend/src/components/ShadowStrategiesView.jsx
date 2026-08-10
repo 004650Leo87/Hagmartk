@@ -3,8 +3,12 @@ import {
   enableShadowCandidate,
   getCompletedShadowHistory,
   getShadowCandidates,
+  getShadowEvidence,
   getShadowForwardValidation,
   getShadowIntelligence,
+  getShadowObservationDrilldown,
+  getShadowObservationHealth,
+  getShadowObservationProgress,
   getShadowScanners,
   getShadowStatisticalValidation,
   getShadowStatistics,
@@ -45,7 +49,15 @@ export default function ShadowStrategiesView() {
   const [statVal, setStatVal] = useState(null);
   const [telemetry, setTelemetry] = useState(null);
   const [intel, setIntel] = useState(null);
+  const [evidence, setEvidence] = useState(null);
+  const [obsHealth, setObsHealth] = useState(null);
+  const [obsProgress, setObsProgress] = useState(null);
+  const [selectedDrilldown, setSelectedDrilldown] = useState(null);
+  const [loadingDrilldown, setLoadingDrilldown] = useState(false);
+  const [obsSearch, setObsSearch] = useState("");
+  const [obsFilterTf, setObsFilterTf] = useState("TODOS");
   const [showTelemetryModal, setShowTelemetryModal] = useState(false);
+  const [showEvidenceModal, setShowEvidenceModal] = useState(false);
   const [breakdownTab, setBreakdownTab] = useState("symbol");
   const [showQualityDetails, setShowQualityDetails] = useState(false);
   const [activeTab, setActiveTab] = useState("overview");
@@ -66,7 +78,7 @@ export default function ShadowStrategiesView() {
   async function loadData() {
     setLoading(true);
     try {
-      const [candsRes, statusRes, statsRes, scannersRes, histRes, fwdRes, statRes, telemRes, intelRes] = await Promise.allSettled([
+      const [candsRes, statusRes, statsRes, scannersRes, histRes, fwdRes, statRes, telemRes, intelRes, evRes, obsHRes, obsPRes] = await Promise.allSettled([
         getShadowCandidates(),
         getShadowStatus(),
         getShadowStatistics(),
@@ -76,6 +88,9 @@ export default function ShadowStrategiesView() {
         getShadowStatisticalValidation(),
         getShadowTelemetry(),
         getShadowIntelligence(),
+        getShadowEvidence(),
+        getShadowObservationHealth(),
+        getShadowObservationProgress(),
       ]);
       if (candsRes.status === "fulfilled") setCandidates(candsRes.value);
       if (statusRes.status === "fulfilled") setStatus(statusRes.value);
@@ -86,6 +101,9 @@ export default function ShadowStrategiesView() {
       if (statRes.status === "fulfilled") setStatVal(statRes.value);
       if (telemRes.status === "fulfilled") setTelemetry(telemRes.value);
       if (intelRes.status === "fulfilled") setIntel(intelRes.value);
+      if (evRes.status === "fulfilled") setEvidence(evRes.value);
+      if (obsHRes.status === "fulfilled") setObsHealth(obsHRes.value);
+      if (obsPRes.status === "fulfilled") setObsProgress(obsPRes.value);
       setError("");
     } catch {
       setError("Erro ao carregar dados do Shadow Mode.");
@@ -838,7 +856,381 @@ export default function ShadowStrategiesView() {
             )}
           </div>
 
-          {/* Comparação Lado a Lado: Histórico vs Shadow */}
+          {/* Seção da Decision & Evidence Layer V1 (Julgamento Observacional READ-ONLY) */}
+          <div style={{ background: "#0b1320", padding: "14px", borderRadius: "8px", border: "1px solid #1e293b" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", marginBottom: "10px" }}>
+              <div>
+                <h4 style={{ fontSize: "13px", fontWeight: "700", color: "#f8fafc", margin: 0 }}>
+                  CAMADA DE JULGAMENTO QUANTITATIVO OBSERVACIONAL V1
+                </h4>
+                <span style={{ fontSize: "11px", color: "#94a3b8" }}>
+                  Classificação determinística da força da evidência (READ-ONLY • Sem tomadas de ação automáticas)
+                </span>
+              </div>
+              <button
+                type="button"
+                className="btn secondary"
+                style={{ fontSize: "11px", padding: "4px 10px" }}
+                onClick={() => setShowEvidenceModal(true)}
+              >
+                💬 Por que? (Explicações Detalhadas)
+              </button>
+            </div>
+
+            <div className="strategy-metrics-grid">
+              <div className="strategy-metric-box">
+                <span className="strategy-metric-label">Status Observacional</span>
+                <strong style={{
+                  color: evidence?.observational_status === "EVIDENCE_CONSISTENT" ? "#34d399" : (evidence?.observational_status === "VALIDATING" ? "#60a5fa" : (evidence?.observational_status === "EARLY_VALIDATION" ? "#f59e0b" : (evidence?.observational_status === "EVIDENCE_DIVERGING" || evidence?.observational_status === "DATA_QUALITY_WARNING" ? "#ef4444" : "#94a3b8"))),
+                  fontSize: "12px"
+                }}>
+                  ● {evidence?.observational_status || "COLLECTING_DATA"}
+                </strong>
+              </div>
+              <div className="strategy-metric-box">
+                <span className="strategy-metric-label">Estado de Evidência</span>
+                <strong style={{
+                  color: evidence?.evidence_state === "ROBUST_EVIDENCE" ? "#34d399" : (evidence?.evidence_state === "DEVELOPING_EVIDENCE" ? "#60a5fa" : (evidence?.evidence_state === "EARLY_EVIDENCE" ? "#f59e0b" : (evidence?.evidence_state === "DEGRADED_EVIDENCE" ? "#ef4444" : "#94a3b8"))),
+                  fontSize: "12px"
+                }}>
+                  ● {evidence?.evidence_state || "INSUFFICIENT_EVIDENCE"}
+                </strong>
+              </div>
+              <div className="strategy-metric-box">
+                <span className="strategy-metric-label">Expectativa IC 95%</span>
+                <strong style={{ color: "#f8fafc", fontSize: "11px" }}>
+                  {evidence?.performance?.ci_lower != null ? `[${evidence.performance.ci_lower > 0 ? "+" : ""}${evidence.performance.ci_lower}R, ${evidence.performance.ci_upper > 0 ? "+" : ""}${evidence.performance.ci_upper}R]` : "Amostra Insuficiente"}
+                </strong>
+              </div>
+              <div className="strategy-metric-box">
+                <span className="strategy-metric-label">Reason Codes Ativos</span>
+                <strong style={{ color: "#60a5fa", fontSize: "12px" }}>
+                  {evidence?.reason_codes ? `${evidence.reason_codes.length} regras ativas` : "--"}
+                </strong>
+              </div>
+            </div>
+
+            {evidence?.contradictions && evidence.contradictions.length > 0 && (
+              <div style={{ marginTop: "10px", background: "rgba(239,68,68,0.1)", border: "1px solid #ef4444", borderRadius: "6px", padding: "8px 12px", color: "#f87171", fontSize: "11px" }}>
+                ⚠ <strong>Contradições Detectadas:</strong> {evidence.contradictions.join(" • ")}
+              </div>
+            )}
+          </div>
+
+          {/* Modal / Drawer de Explicações Detalhadas em Linguagem Humana */}
+          {showEvidenceModal && (
+            <div style={{
+              position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+              background: "rgba(0,0,0,0.8)", zIndex: 9999, display: "flex",
+              alignItems: "center", justifyContent: "center", padding: "20px"
+            }}>
+              <div style={{
+                background: "#0f172a", border: "1px solid #334155", borderRadius: "10px",
+                width: "750px", maxWidth: "95vw", maxHeight: "85vh", display: "flex",
+                flexDirection: "column", padding: "20px"
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                  <div>
+                    <h3 style={{ fontSize: "16px", fontWeight: "700", color: "#f8fafc", margin: 0 }}>
+                      PARECER QUANTITATIVO & REASON CODES — SHADOW MODE
+                    </h3>
+                    <span style={{ fontSize: "11px", color: "#94a3b8" }}>
+                      Tradução determinística em linguagem clara da força da evidência observada
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn secondary"
+                    onClick={() => setShowEvidenceModal(false)}
+                    style={{ padding: "4px 12px", fontSize: "12px" }}
+                  >
+                    Fechar ✕
+                  </button>
+                </div>
+
+                <div style={{ overflowY: "auto", flex: 1, border: "1px solid #1e293b", borderRadius: "6px", padding: "14px", background: "#070d17" }}>
+                  <h4 style={{ fontSize: "12px", fontWeight: "700", color: "#60a5fa", marginTop: 0, marginBottom: "10px" }}>
+                    REASON CODES & JUSTIFICATIVAS OPERACIONAIS
+                  </h4>
+                  <ul style={{ margin: 0, paddingLeft: "18px", color: "#f8fafc", fontSize: "12px", display: "flex", flexDirection: "column", gap: "10px" }}>
+                    {evidence?.human_reasons?.map((reason, idx) => (
+                      <li key={idx}>
+                        <strong>{evidence.reason_codes[idx]}:</strong> {reason}
+                      </li>
+                    ))}
+                  </ul>
+
+                  {evidence?.contradictions && evidence.contradictions.length > 0 && (
+                    <div style={{ marginTop: "16px" }}>
+                      <h4 style={{ fontSize: "12px", fontWeight: "700", color: "#f87171", marginBottom: "8px" }}>
+                        ANÁLISE DE CONTRADIÇÕES E ADVERTÊNCIAS
+                      </h4>
+                      <ul style={{ margin: 0, paddingLeft: "18px", color: "#f87171", fontSize: "11px" }}>
+                        {evidence.contradictions.map((c, i) => (
+                          <li key={i}>{c}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Seção de Observação Prospectiva & Acumulação Continuada (Fase 4F) */}
+          <div style={{ background: "#0b1320", padding: "14px", borderRadius: "8px", border: "1px solid #1e293b" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", marginBottom: "12px" }}>
+              <div>
+                <h4 style={{ fontSize: "13px", fontWeight: "700", color: "#f8fafc", margin: 0 }}>
+                  OBSERVAÇÃO PROSPECTIVA & ACUMULAÇÃO CONTINUADA (39 COMBINAÇÕES)
+                </h4>
+                <span style={{ fontSize: "11px", color: "#94a3b8" }}>
+                  Acompanhamento continuado do crescimento real da amostra e saúde da observação sem look-ahead bias
+                </span>
+              </div>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                <input
+                  type="text"
+                  placeholder="Buscar ativo/TF..."
+                  value={obsSearch}
+                  onChange={(e) => setObsSearch(e.target.value)}
+                  style={{ background: "#0f172a", border: "1px solid #334155", color: "#f8fafc", padding: "4px 8px", borderRadius: "4px", fontSize: "11px", width: "120px" }}
+                />
+                <select
+                  value={obsFilterTf}
+                  onChange={(e) => setObsFilterTf(e.target.value)}
+                  style={{ background: "#0f172a", border: "1px solid #334155", color: "#f8fafc", padding: "4px 8px", borderRadius: "4px", fontSize: "11px" }}
+                >
+                  <option value="TODOS">Todos TFs</option>
+                  <option value="M15">M15</option>
+                  <option value="H1">H1</option>
+                  <option value="H4">H4</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Cabeçalho Resumo de Saúde */}
+            <div className="strategy-metrics-grid" style={{ marginBottom: "12px" }}>
+              <div className="strategy-metric-box">
+                <span className="strategy-metric-label">Universo Shadow</span>
+                <strong style={{ color: "#f8fafc", fontSize: "12px" }}>
+                  {obsHealth?.total_universe_combinations ?? 39} combinações
+                </strong>
+              </div>
+              <div className="strategy-metric-box">
+                <span className="strategy-metric-label">Observadas</span>
+                <strong style={{ color: "#34d399", fontSize: "12px" }}>
+                  {obsHealth?.observed_combinations ?? 0} / 39
+                </strong>
+              </div>
+              <div className="strategy-metric-box">
+                <span className="strategy-metric-label">Saudáveis</span>
+                <strong style={{ color: "#34d399", fontSize: "12px" }}>
+                  {obsHealth?.healthy_combinations ?? 0}
+                </strong>
+              </div>
+              <div className="strategy-metric-box">
+                <span className="strategy-metric-label">Degradadas / Aguardando</span>
+                <strong style={{ color: obsHealth?.degraded_combinations > 0 ? "#ef4444" : "#94a3b8", fontSize: "12px" }}>
+                  {obsHealth?.degraded_combinations ?? 0} deg / {obsHealth?.insufficient_data_combinations ?? 39} aguard
+                </strong>
+              </div>
+              <div className="strategy-metric-box">
+                <span className="strategy-metric-label">Cobertura Global</span>
+                <strong style={{ color: (obsHealth?.global_coverage_pct ?? 0) >= 95 ? "#34d399" : "#f59e0b", fontSize: "12px" }}>
+                  {obsHealth?.global_coverage_pct != null ? `${obsHealth.global_coverage_pct.toFixed(1)}%` : "Indisponível"}
+                </strong>
+              </div>
+              <div className="strategy-metric-box">
+                <span className="strategy-metric-label">Última Atualização</span>
+                <strong style={{ color: "#60a5fa", fontSize: "11px" }}>
+                  {obsHealth?.newest_observation_at ? new Date(obsHealth.newest_observation_at).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : "Acumulando..."}
+                </strong>
+              </div>
+            </div>
+
+            {/* Tabela de Acúmulo por Combinação */}
+            <div style={{ overflowX: "auto", border: "1px solid #1e293b", borderRadius: "6px" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "11px", textAlign: "left", color: "#f8fafc" }}>
+                <thead>
+                  <tr style={{ background: "#0f172a", borderBottom: "1px solid #1e293b", color: "#94a3b8" }}>
+                    <th style={{ padding: "8px 10px" }}>Ativo</th>
+                    <th style={{ padding: "8px 10px" }}>TF</th>
+                    <th style={{ padding: "8px 10px" }}>Observações</th>
+                    <th style={{ padding: "8px 10px" }}>Eventos HDF</th>
+                    <th style={{ padding: "8px 10px" }}>Amostra (Resolvidos)</th>
+                    <th style={{ padding: "8px 10px" }}>Cobertura</th>
+                    <th style={{ padding: "8px 10px" }}>Estado de Evidência</th>
+                    <th style={{ padding: "8px 10px" }}>Saúde</th>
+                    <th style={{ padding: "8px 10px", textAlign: "right" }}>Ação</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {obsProgress?.combinations
+                    ?.filter((c) => {
+                      if (obsFilterTf !== "TODOS" && c.timeframe !== obsFilterTf) return false;
+                      if (obsSearch && !c.symbol.toLowerCase().includes(obsSearch.toLowerCase())) return false;
+                      return true;
+                    })
+                    .slice(0, 15)
+                    .map((c, i) => (
+                      <tr key={i} style={{ borderBottom: "1px solid #1e293b", background: i % 2 === 0 ? "#070d17" : "#0b1320" }}>
+                        <td style={{ padding: "6px 10px", fontWeight: "700" }}>{c.symbol}</td>
+                        <td style={{ padding: "6px 10px", color: "#60a5fa" }}>{c.timeframe}</td>
+                        <td style={{ padding: "6px 10px" }}>{c.observations_count}</td>
+                        <td style={{ padding: "6px 10px" }}>{c.hdf_events_count}</td>
+                        <td style={{ padding: "6px 10px", fontWeight: "700" }}>{c.sample_size}</td>
+                        <td style={{ padding: "6px 10px", color: c.coverage_pct >= 95 ? "#34d399" : (c.coverage_pct > 0 ? "#f59e0b" : "#94a3b8") }}>
+                          {c.coverage_pct != null ? `${c.coverage_pct.toFixed(1)}%` : "N/D"}
+                        </td>
+                        <td style={{ padding: "6px 10px", color: c.current_evidence_state === "ROBUST_EVIDENCE" ? "#34d399" : (c.current_evidence_state === "DEVELOPING_EVIDENCE" ? "#60a5fa" : "#f59e0b") }}>
+                          {c.current_evidence_state}
+                        </td>
+                        <td style={{ padding: "6px 10px" }}>
+                          <span style={{
+                            padding: "2px 6px", borderRadius: "4px", fontSize: "10px", fontWeight: "700",
+                            background: c.health === "HEALTHY" ? "rgba(52,211,153,0.15)" : (c.health === "DEGRADED" ? "rgba(245,158,11,0.15)" : "rgba(148,163,184,0.15)"),
+                            color: c.health === "HEALTHY" ? "#34d399" : (c.health === "DEGRADED" ? "#f59e0b" : "#94a3b8"),
+                          }}>
+                            {c.health}
+                          </span>
+                        </td>
+                        <td style={{ padding: "6px 10px", textAlign: "right" }}>
+                          <button
+                            type="button"
+                            className="btn secondary"
+                            style={{ padding: "2px 8px", fontSize: "10px" }}
+                            onClick={async () => {
+                              setLoadingDrilldown(true);
+                              try {
+                                const data = await getShadowObservationDrilldown(c.symbol, c.timeframe);
+                                setSelectedDrilldown(data);
+                              } catch {
+                                setSelectedDrilldown(null);
+                              } finally {
+                                setLoadingDrilldown(false);
+                              }
+                            }}
+                          >
+                            Drill-down →
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Modal de Drill-Down por Combinação (Fase 4F) */}
+          {(selectedDrilldown || loadingDrilldown) && (
+            <div style={{
+              position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+              background: "rgba(0,0,0,0.8)", zIndex: 9999, display: "flex",
+              alignItems: "center", justifyContent: "center", padding: "20px"
+            }}>
+              <div style={{
+                background: "#0f172a", border: "1px solid #334155", borderRadius: "10px",
+                width: "800px", maxWidth: "95vw", maxHeight: "85vh", display: "flex",
+                flexDirection: "column", padding: "20px"
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+                  <div>
+                    <h3 style={{ fontSize: "16px", fontWeight: "700", color: "#f8fafc", margin: 0 }}>
+                      DRILL-DOWN PROSPECTIVO — {selectedDrilldown ? `${selectedDrilldown.symbol} (${selectedDrilldown.timeframe})` : "Carregando..."}
+                    </h3>
+                    <span style={{ fontSize: "11px", color: "#94a3b8" }}>
+                      Histórico detalhado de observações, eventos e transições de estado de evidência
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn secondary"
+                    onClick={() => setSelectedDrilldown(null)}
+                    style={{ padding: "4px 12px", fontSize: "12px" }}
+                  >
+                    Fechar ✕
+                  </button>
+                </div>
+
+                {loadingDrilldown ? (
+                  <div style={{ padding: "40px", textAlign: "center", color: "#94a3b8" }}>Carregando dados de drill-down...</div>
+                ) : (
+                  <div style={{ overflowY: "auto", flex: 1, border: "1px solid #1e293b", borderRadius: "6px", padding: "14px", background: "#070d17" }}>
+                    <div className="strategy-metrics-grid" style={{ marginBottom: "16px" }}>
+                      <div className="strategy-metric-box">
+                        <span className="strategy-metric-label">Observações Gravadas</span>
+                        <strong style={{ color: "#f8fafc", fontSize: "12px" }}>{selectedDrilldown?.observations_count ?? 0}</strong>
+                      </div>
+                      <div className="strategy-metric-box">
+                        <span className="strategy-metric-label">Eventos HDF</span>
+                        <strong style={{ color: "#60a5fa", fontSize: "12px" }}>{selectedDrilldown?.events_count ?? 0}</strong>
+                      </div>
+                      <div className="strategy-metric-box">
+                        <span className="strategy-metric-label">Estado de Evidência Atual</span>
+                        <strong style={{ color: "#34d399", fontSize: "12px" }}>
+                          {selectedDrilldown?.latest_observation?.evidence_state || "INSUFFICIENT_EVIDENCE"}
+                        </strong>
+                      </div>
+                      <div className="strategy-metric-box">
+                        <span className="strategy-metric-label">Status Observacional</span>
+                        <strong style={{ color: "#60a5fa", fontSize: "12px" }}>
+                          {selectedDrilldown?.latest_observation?.observational_status || "COLLECTING_DATA"}
+                        </strong>
+                      </div>
+                    </div>
+
+                    <h4 style={{ fontSize: "12px", fontWeight: "700", color: "#60a5fa", marginBottom: "8px" }}>
+                      HISTÓRICO DE TRANSIÇÕES DE ESTADO DE EVIDÊNCIA
+                    </h4>
+                    {selectedDrilldown?.evidence_transitions && selectedDrilldown.evidence_transitions.length > 0 ? (
+                      <ul style={{ margin: 0, paddingLeft: "18px", color: "#f8fafc", fontSize: "11px", marginBottom: "16px" }}>
+                        {selectedDrilldown.evidence_transitions.map((t, idx) => (
+                          <li key={idx}>
+                            <strong>{t.transitioned_at}:</strong> Transição de <code>{t.from_state}</code> → <code>{t.to_state}</code> ({t.reason_code})
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <div style={{ color: "#94a3b8", fontSize: "11px", marginBottom: "16px" }}>Nenhuma transição de estado gravada até o momento.</div>
+                    )}
+
+                    <h4 style={{ fontSize: "12px", fontWeight: "700", color: "#60a5fa", marginBottom: "8px" }}>
+                      ÚLTIMAS OBSERVAÇÕES REGISTRADAS
+                    </h4>
+                    {selectedDrilldown?.observation_history && selectedDrilldown.observation_history.length > 0 ? (
+                      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "10px", textAlign: "left", color: "#f8fafc" }}>
+                        <thead>
+                          <tr style={{ background: "#0f172a", borderBottom: "1px solid #1e293b", color: "#94a3b8" }}>
+                            <th style={{ padding: "4px 8px" }}>Candle/Window</th>
+                            <th style={{ padding: "4px 8px" }}>Status</th>
+                            <th style={{ padding: "4px 8px" }}>Evidência</th>
+                            <th style={{ padding: "4px 8px" }}>Sample</th>
+                            <th style={{ padding: "4px 8px" }}>Cobertura</th>
+                            <th style={{ padding: "4px 8px" }}>Gravado em</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {selectedDrilldown.observation_history.slice(0, 5).map((o, idx) => (
+                            <tr key={idx} style={{ borderBottom: "1px solid #1e293b" }}>
+                              <td style={{ padding: "4px 8px" }}>{o.window_time}</td>
+                              <td style={{ padding: "4px 8px" }}>{o.observational_status}</td>
+                              <td style={{ padding: "4px 8px" }}>{o.evidence_state}</td>
+                              <td style={{ padding: "4px 8px" }}>{o.sample_size}</td>
+                              <td style={{ padding: "4px 8px" }}>{o.scanner_coverage != null ? `${(o.scanner_coverage * 100).toFixed(1)}%` : "N/D"}</td>
+                              <td style={{ padding: "4px 8px", color: "#94a3b8" }}>{o.observed_at}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <div style={{ color: "#94a3b8", fontSize: "11px" }}>Nenhuma observação no banco.</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "12px" }}>
             <div style={{ background: "#070d17", padding: "14px", borderRadius: "8px", border: "1px solid #1e293b" }}>
               <span className="badge badge-candidate" style={{ marginBottom: "8px", display: "inline-block" }}>
