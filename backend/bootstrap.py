@@ -81,6 +81,11 @@ def start_system(system: Dict) -> None:
 
     try:
         application.start()
+        # Iniciar o scheduler autônomo do Shadow Scanner em background
+        from backend.services.shadow_scanner import ShadowScannerManager
+        scanner = system.get("shadow_scanner") or ShadowScannerManager()
+        system["shadow_scanner"] = scanner
+        scanner.start_auto_scheduler(adapter=market_engine.adapter, interval_seconds=10.0)
     except Exception as error:
         logger.error("Failed to start system: %s", error)
         raise
@@ -88,6 +93,13 @@ def start_system(system: Dict) -> None:
 
 def shutdown_system(system: Dict) -> None:
     """Shutdown the kernel safely."""
+    scanner = system.get("shadow_scanner")
+    if scanner is not None and hasattr(scanner, "stop_auto_scheduler"):
+        try:
+            scanner.stop_auto_scheduler()
+        except Exception:
+            pass
+
     application: Application = system.get("application")
 
     if application is None:

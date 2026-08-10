@@ -211,6 +211,20 @@ class ShadowScannerManager:
             HDF_ROBUST_CANDIDATE_V1.candidate_id, symbol, timeframe, success=True, now_str=now_str
         )
 
+        # Registra a observação prospectiva continuada de forma idempotente
+        try:
+            from backend.services.shadow_observation_engine import ShadowObservationEngine
+            obs_engine = ShadowObservationEngine(store=self.store)
+            obs_engine.record_observation_cycle(
+                symbol=symbol,
+                timeframe=timeframe,
+                window_time=last_closed_time,
+                candidate_id=HDF_ROBUST_CANDIDATE_V1.candidate_id,
+                observed_at=now_str,
+            )
+        except Exception as _obs_err:
+            _logger.warning("[SHADOW] Erro ao gravar observação prospectiva: %s", _obs_err)
+
         # Avalia a estratégia completa no conjunto de candles (warmup incluso)
         analysis = self.strategy.evaluate_full_dataset_analysis(df_closed, symbol, timeframe)
         occurrences = analysis.get("occurrences", [])
@@ -225,7 +239,11 @@ class ShadowScannerManager:
             ):
                 continue
 
-            event_time_str = str(occ.divergence.candle2.time)
+            event_time_str = str(
+                getattr(occ, "pivot_2_time", None)
+                or getattr(getattr(occ, "temporal_model", None), "confluence_time", "")
+                or getattr(occ, "confluence_time", "")
+            )
             event_dt = self._parse_event_time(event_time_str)
 
             is_bootstrap = False
@@ -265,29 +283,42 @@ class ShadowScannerManager:
                         symbol, timeframe, state_val, event_time_str, self.shadow_started_at,
                     )
 
+            dir_val = getattr(occ, "direction", "BULLISH")
+            p1_price = float(getattr(occ, "price_p1", 0.0))
+            p1_time = str(getattr(occ, "pivot_1_time", ""))
+            p2_price = float(getattr(occ, "price_p2", 0.0))
+            p2_time = str(getattr(occ, "pivot_2_time", ""))
+            r1_rsi = float(getattr(occ, "rsi_p1", 0.0))
+            r2_rsi = float(getattr(occ, "rsi_p2", 0.0))
+            act_lvl = float(getattr(occ, "activation_level", 0.0))
+            init_stop = float(getattr(occ, "initial_stop", 0.0))
+            ent_price = float(getattr(occ, "entry_price", 0.0))
+
+            target_val = (
+                act_lvl + (2.0 * abs(act_lvl - init_stop))
+                if dir_val == "BULLISH"
+                else act_lvl - (2.0 * abs(act_lvl - init_stop))
+            )
+
             evi = EvidencePayload(
                 symbol=symbol,
                 timeframe=timeframe,
-                direction=occ.divergence.direction,
-                pivot1={"price": occ.divergence.pivot1.price, "time": str(occ.divergence.pivot1.time)},
-                pivot2={"price": occ.divergence.pivot2.price, "time": str(occ.divergence.pivot2.time)},
-                rsi1=occ.divergence.pivot1.rsi,
-                rsi2=occ.divergence.pivot2.rsi,
-                divergence_price_line=(occ.divergence.pivot1.price, occ.divergence.pivot2.price),
-                divergence_rsi_line=(occ.divergence.pivot1.rsi, occ.divergence.pivot2.rsi),
+                direction=dir_val,
+                pivot1={"price": p1_price, "time": p1_time},
+                pivot2={"price": p2_price, "time": p2_time},
+                rsi1=r1_rsi,
+                rsi2=r2_rsi,
+                divergence_price_line=(p1_price, p2_price),
+                divergence_rsi_line=(r1_rsi, r2_rsi),
                 pattern_candle={
-                    "name": occ.pattern.pattern_type if occ.pattern else "",
-                    "time": str(occ.pattern.candle.time) if occ.pattern else "",
+                    "name": getattr(occ, "pattern_type", ""),
+                    "time": p2_time,
                 },
-                volume_relative=occ.divergence.candle2.relative_volume,
-                activation_level=occ.activation_level,
-                entry_price=occ.activation_price or 0.0,
-                initial_stop=occ.initial_stop,
-                target_price=(
-                    occ.activation_level + (2.0 * abs(occ.activation_level - occ.initial_stop))
-                    if occ.divergence.direction == "BULLISH"
-                    else occ.activation_level - (2.0 * abs(occ.activation_level - occ.initial_stop))
-                ),
+                volume_relative=float(getattr(occ, "relative_volume", 1.0)),
+                activation_level=act_lvl,
+                entry_price=ent_price,
+                initial_stop=init_stop,
+                target_price=target_val,
             )
 
             # Mapeamento do estado atual
@@ -306,12 +337,17 @@ class ShadowScannerManager:
             else:
                 c_state = ShadowState.INVALIDATED.value
 
-            evt_id = f"evt_{symbol}_{timeframe}_{int(pd.Timestamp(event_time_str).timestamp())}"
-            initial_risk = abs(occ.activation_level - occ.initial_stop)
+            ts_val = (
+                int(pd.Timestamp(event_time_str).timestamp())
+                if (event_time_str and event_time_str != "None" and not pd.isna(pd.Timestamp(event_time_str)))
+                else int(pd.Timestamp.now(timezone.utc).timestamp())
+            )
+            evt_id = f"evt_{symbol}_{timeframe}_{ts_val}"
+            initial_risk = abs(act_lvl - init_stop)
             target_2r = (
-                occ.activation_level + (2.0 * initial_risk)
-                if occ.divergence.direction == "BULLISH"
-                else occ.activation_level - (2.0 * initial_risk)
+                act_lvl + (2.0 * initial_risk)
+                if dir_val == "BULLISH"
+                else act_lvl - (2.0 * initial_risk)
             )
 
             evt = ShadowEvent(
@@ -434,6 +470,61 @@ class ShadowScannerManager:
                         self.store.save_scanner_state(st)
 
         return summary
+
+    def start_auto_scheduler(self, adapter: Any = None, interval_seconds: float = 15.0) -> None:
+        """Inicia a thread de fundo autônoma para polling e escaneamento do Shadow Universe."""
+        import threading
+        import time
+
+        if getattr(self, "_scheduler_running", False):
+            return
+
+        self._scheduler_running = True
+
+        def _worker():
+            _logger.info("[SHADOW] Scheduler autônomo iniciado (intervalo=%.1fs)", interval_seconds)
+            while getattr(self, "_scheduler_running", False):
+                try:
+                    current_adapter = adapter
+                    if current_adapter is None:
+                        from backend.engines.market.mt5_market_adapter import MT5MarketAdapter
+                        current_adapter = MT5MarketAdapter()
+
+                    try:
+                        current_adapter.connect()
+                    except Exception:
+                        pass
+
+                    import MetaTrader5 as mt5
+                    tf_map = {
+                        "M15": getattr(mt5, "TIMEFRAME_M15", 15),
+                        "H1": getattr(mt5, "TIMEFRAME_H1", 16385),
+                        "H4": getattr(mt5, "TIMEFRAME_H4", 16388),
+                    }
+
+                    for sym in SHADOW_ASSETS:
+                        for tf in SHADOW_TIMEFRAMES:
+                            if not getattr(self, "_scheduler_running", False):
+                                break
+                            tf_const = tf_map.get(tf.upper(), 15)
+                            try:
+                                candles_list = current_adapter.get_candles(sym, tf_const, count=100)
+                                if candles_list:
+                                    df_candles = pd.DataFrame(candles_list)
+                                    self.scan_closed_candle(sym, tf, df_candles)
+                            except Exception as _err:
+                                _logger.debug("[SHADOW] Pulo por indisponibilidade/erro em %s %s: %s", sym, tf, _err)
+                except Exception as ex:
+                    _logger.warning("[SHADOW] Exceção no loop do scheduler autônomo: %s", ex)
+
+                time.sleep(interval_seconds)
+
+        thread = threading.Thread(target=_worker, daemon=True, name="ShadowAutoScheduler")
+        thread.start()
+
+    def stop_auto_scheduler(self) -> None:
+        """Para o scheduler autônomo de fundo."""
+        self._scheduler_running = False
 
     def _parse_shadow_started_at(self) -> Optional[datetime]:
         """Parseia shadow_started_at para datetime UTC usando helper centralizado."""

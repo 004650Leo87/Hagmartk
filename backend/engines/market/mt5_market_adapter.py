@@ -256,23 +256,30 @@ class MT5MarketAdapter(MarketAdapter):
 
         candles: List[Dict[str, Any]] = []
 
+        def _get_field(obj: Any, key: str) -> Any:
+            if isinstance(obj, dict):
+                return obj.get(key)
+            try:
+                return obj[key]
+            except Exception:
+                return getattr(obj, key, None)
+
         for r in rates:
-            # r may be a numpy.record or object with attributes
-            time_val = getattr(r, "time", None) if not isinstance(r, dict) else r.get("time")
+            time_val = _get_field(r, "time")
             timestamp = (
                 datetime.fromtimestamp(time_val, tz=timezone.utc).isoformat()
                 if time_val is not None
                 else None
             )
 
-            open_v = getattr(r, "open", None) if not isinstance(r, dict) else r.get("open")
-            high_v = getattr(r, "high", None) if not isinstance(r, dict) else r.get("high")
-            low_v = getattr(r, "low", None) if not isinstance(r, dict) else r.get("low")
-            close_v = getattr(r, "close", None) if not isinstance(r, dict) else r.get("close")
+            open_v = float(_get_field(r, "open")) if _get_field(r, "open") is not None else None
+            high_v = float(_get_field(r, "high")) if _get_field(r, "high") is not None else None
+            low_v = float(_get_field(r, "low")) if _get_field(r, "low") is not None else None
+            close_v = float(_get_field(r, "close")) if _get_field(r, "close") is not None else None
 
-            tick_volume = getattr(r, "tick_volume", None) if not isinstance(r, dict) else r.get("tick_volume")
-            spread = getattr(r, "spread", None) if not isinstance(r, dict) else r.get("spread")
-            real_volume = getattr(r, "real_volume", None) if not isinstance(r, dict) else r.get("real_volume")
+            tick_volume = int(_get_field(r, "tick_volume")) if _get_field(r, "tick_volume") is not None else 0
+            spread = float(_get_field(r, "spread")) if _get_field(r, "spread") is not None else 0.0
+            real_volume = float(_get_field(r, "real_volume")) if _get_field(r, "real_volume") is not None else 0.0
 
             candles.append(
                 {
