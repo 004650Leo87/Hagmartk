@@ -2,7 +2,14 @@ import { createPortal } from 'react-dom';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import './App.css';
 import MarketChart from './components/MarketChart';
+import ShadowStrategiesView from './components/ShadowStrategiesView';
+import MarketAlertsSection from './components/MarketAlertsSection';
 import { timeframeCodes } from './chart/chartConstants';
+import HdfToastStack, { TOAST_STATES_WITH_NOTIFICATION } from './components/HdfToastStack';
+import SymbolSearchModal from './components/SymbolSearchModal';
+import EvidenceDrawer from './components/EvidenceDrawer';
+import IndicatorManagerModal from './components/IndicatorManagerModal';
+import { loadSavedUserIndicators, saveUserIndicators } from './indicators/indicatorRegistry';
 
 import {
   getAccountPositions,
@@ -12,6 +19,10 @@ import {
   getSystemHealth,
   getTimeframes,
   getTodayHistory,
+  getShadowRecentEvents,
+  getWatchlist,
+  addToWatchlist,
+  removeFromWatchlist,
 } from './services/api';
 const menuItems = [
   { id: 'dashboard', label: 'Painel', icon: '▦' },
@@ -281,6 +292,52 @@ function App() {
   const [showEMA200, setShowEMA200] = useState(false);
   const [showDivergences, setShowDivergences] = useState(false);
 
+  // Indicator Manager (Fase 3C)
+  const [userIndicators, setUserIndicators] = useState(() => loadSavedUserIndicators());
+  const [indicatorManagerOpen, setIndicatorManagerOpen] = useState(false);
+
+  function handleAddUserIndicator(newInd) {
+    setUserIndicators((prev) => {
+      const next = [...prev, newInd];
+      saveUserIndicators(next);
+      return next;
+    });
+  }
+
+  function handleRemoveUserIndicator(instanceId) {
+    setUserIndicators((prev) => {
+      const next = prev.filter((i) => i.instanceId !== instanceId);
+      saveUserIndicators(next);
+      return next;
+    });
+  }
+
+  function handleToggleUserIndicatorVisibility(instanceId) {
+    setUserIndicators((prev) => {
+      const next = prev.map((i) => (i.instanceId === instanceId ? { ...i, visible: !i.visible } : i));
+      saveUserIndicators(next);
+      return next;
+    });
+  }
+
+  // Evidence Mode
+  const [activeEvidenceEventId, setActiveEvidenceEventId] = useState(null);
+  const [activeEvidenceData, setActiveEvidenceData] = useState(null);
+
+  // HDF Toast
+  const [toasts, setToasts] = useState([]);
+  const seenToastIdsRef = useRef(new Set());
+
+  // Watchlist dinâmica
+  const [watchlistSymbols, setWatchlistSymbols] = useState([]);
+  const [watchlistQuotes, setWatchlistQuotes] = useState([]);
+  const [loadingWatchlist, setLoadingWatchlist] = useState(true);
+  const [symbolSearchOpen, setSymbolSearchOpen] = useState(false);
+  const [watchlistSearch, setWatchlistSearch] = useState('');
+  
+  // Para EvidenceDrawer (Mock se não houver dados, ou pode vir de outro lugar)
+  const [divergenceEvents, setDivergenceEvents] = useState([]);
+
   const [symbols, setSymbols] = useState([]);
   const [loadingSymbols, setLoadingSymbols] = useState(true);
   const [symbolsError, setSymbolsError] = useState('');
@@ -436,6 +493,39 @@ function App() {
     return () => {
       active = false;
 
+      if (intervalId) {
+        window.clearInterval(intervalId);
+      }
+    };
+  }, []);
+
+  // Efeito de carregamento e atualização periódica da Watchlist (Fase 3D)
+  useEffect(() => {
+    let active = true;
+    let intervalId = null;
+
+    async function loadWatchlistData() {
+      try {
+        const data = await getWatchlist();
+        const quotes = Array.isArray(data) ? data : [];
+        if (active) {
+          setWatchlistQuotes(quotes);
+          setWatchlistSymbols(quotes.map((q) => q.symbol || q.name || q));
+          setLoadingWatchlist(false);
+        }
+      } catch (err) {
+        console.error('Erro ao carregar a watchlist:', err);
+        if (active) {
+          setLoadingWatchlist(false);
+        }
+      }
+    }
+
+    loadWatchlistData();
+    intervalId = window.setInterval(loadWatchlistData, 3000);
+
+    return () => {
+      active = false;
       if (intervalId) {
         window.clearInterval(intervalId);
       }
@@ -740,6 +830,51 @@ function App() {
         error,
       );
     }
+  }
+
+  function handleNavigateToEvent(event) {
+    if (event.symbol) setSelectedSymbol(event.symbol);
+    if (event.timeframe) setSelectedTimeframe(event.timeframe);
+    setActiveEvidenceEventId(event.event_id || event.alert_id);
+    setActiveEvidenceData(event);
+    setActiveView('market');
+  }
+
+  function handleDismissToast(id) {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+  }
+
+  async function handleAddToWatchlist(symbol) {
+    try {
+      await addToWatchlist(symbol);
+      // Recarrega watchlist
+      const data = await getWatchlist();
+      const quotes = Array.isArray(data) ? data : [];
+      setWatchlistQuotes(quotes);
+      setWatchlistSymbols(quotes.map((q) => q.symbol || q.name || q));
+    } catch (err) {
+      console.error('Erro ao adicionar à watchlist:', err);
+    }
+  }
+
+  async function handleRemoveFromWatchlist(symbol) {
+    try {
+      await removeFromWatchlist(symbol);
+      const data = await getWatchlist();
+      const quotes = Array.isArray(data) ? data : [];
+      setWatchlistQuotes(quotes);
+      setWatchlistSymbols(quotes.map((q) => q.symbol || q.name || q));
+    } catch (err) {
+      console.error('Erro ao remover da watchlist:', err);
+    }
+  }
+
+  function handleActivateEvidence(evt) {
+    setActiveEvidenceEventId(evt.event_id || null);
+    setActiveEvidenceData(evt);
+    if (evt.symbol) setSelectedSymbol(evt.symbol);
+    if (evt.timeframe) setSelectedTimeframe(evt.timeframe);
+    setActiveView('market');
   }
 
   return (
@@ -1210,99 +1345,90 @@ function App() {
         </div>
 
         <main className="terminal-main">
-          <section className="chart-workspace">
-            <div className="chart-toolbar">
-              <div className="drawing-tools">
-                <button type="button" title="Cursor">
-                  ↖
-                </button>
+          {activeView === 'strategies' ? (
+            <section className="strategies-workspace p-6 w-full overflow-y-auto">
+              <ShadowStrategiesView />
+            </section>
+          ) : (
+            <section className="chart-workspace">
+              {activeView === 'dashboard' && (
+                <div className="p-4 border-b border-slate-800 bg-slate-950/80">
+                  <MarketAlertsSection />
+                </div>
+              )}
+              <div className="chart-toolbar">
+                <div className="drawing-tools">
+                  <button type="button" title="Cursor">
+                    ↖
+                  </button>
 
-                <button type="button" title="Linha">
-                  ╱
-                </button>
+                  <button type="button" title="Linha">
+                    ╱
+                  </button>
 
-                <button type="button" title="Linha horizontal">
-                  —
-                </button>
+                  <button type="button" title="Linha horizontal">
+                    —
+                  </button>
 
-                <button type="button" title="Retângulo">
-                  □
-                </button>
+                  <button type="button" title="Retângulo">
+                    □
+                  </button>
 
-                <button type="button" title="Texto">
-                  T
-                </button>
+                  <button type="button" title="Texto">
+                    T
+                  </button>
 
-                <button type="button" title="Medição">
-                  ↔
-                </button>
+                  <button type="button" title="Medição">
+                    ↔
+                  </button>
+                </div>
+
+                <div className="indicator-toggles flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    className="chart-tool-btn"
+                    onClick={() => setIndicatorManagerOpen(true)}
+                    title="Gerenciar Indicadores Visuais"
+                  >
+                    📊 Indicadores
+                  </button>
+                </div>
+
+                <EvidenceDrawer
+                  events={divergenceEvents}
+                  onActivateEvidence={handleActivateEvidence}
+                />
+
+                <div className="chart-toolbar-status">
+                  <span>Dados reais do MetaTrader</span>
+                  <strong>{selectedTimeframe}</strong>
+                </div>
               </div>
 
-              <div className="indicator-toggles">
-                <button
-                  type="button"
-                  className={showRSI ? 'indicator-toggle active' : 'indicator-toggle'}
-                  onClick={() => setShowRSI((prev) => !prev)}
-                  title="Alternar RSI 14"
-                >
-                  RSI 14
-                </button>
-
-                <button
-                  type="button"
-                  className={showEMA50 ? 'indicator-toggle active ema50' : 'indicator-toggle'}
-                  onClick={() => setShowEMA50((prev) => !prev)}
-                  title="Alternar EMA 50"
-                >
-                  EMA 50
-                </button>
-
-                <button
-                  type="button"
-                  className={showEMA200 ? 'indicator-toggle active ema200' : 'indicator-toggle'}
-                  onClick={() => setShowEMA200((prev) => !prev)}
-                  title="Alternar EMA 200"
-                >
-                  EMA 200
-                </button>
-
-                <button
-                  type="button"
-                  className={showDivergences ? 'indicator-toggle active hdm' : 'indicator-toggle'}
-                  onClick={() => {
-                    setShowDivergences((prev) => {
-                      const next = !prev;
-                      if (next && !showRSI) {
-                        setShowRSI(true); // Ativa o RSI para exibir a evidência no RSI
-                      }
-                      return next;
-                    });
+              <div className="chart-stage">
+                <MarketChart
+                  symbol={selectedSymbol}
+                  timeframe={selectedTimeframe}
+                  timeframeMap={timeframeMap}
+                  refreshInterval={2000}
+                  userIndicators={userIndicators}
+                  onToggleIndicatorVisibility={handleToggleUserIndicatorVisibility}
+                  onRemoveIndicator={handleRemoveUserIndicator}
+                  onOpenIndicatorSettings={() => setIndicatorModalOpen(true)}
+                  showRSI={showRSI || !!activeEvidenceEventId}
+                  showEMA50={showEMA50}
+                  showEMA200={showEMA200}
+                  showDivergences={showDivergences}
+                  activeEvidenceEventId={activeEvidenceEventId}
+                  activeEvidenceData={activeEvidenceData}
+                  onClearEvidence={() => {
+                    setActiveEvidenceEventId(null);
+                    setActiveEvidenceData(null);
                   }}
-                  title="Alternar Evidências de Divergência HDM"
-                >
-                  ⚡ HDM
-                </button>
+                />
               </div>
-
-              <div className="chart-toolbar-status">
-                <span>Dados reais do MetaTrader</span>
-                <strong>{selectedTimeframe}</strong>
-              </div>
-            </div>
-
-            <div className="chart-stage">
-              <MarketChart
-                symbol={selectedSymbol}
-                timeframe={selectedTimeframe}
-                timeframeMap={timeframeMap}
-                refreshInterval={2000}
-                showRSI={showRSI}
-                showEMA50={showEMA50}
-                showEMA200={showEMA200}
-                showDivergences={showDivergences}
-              />
-            </div>
-          </section>
+            </section>
+          )}
 
           <aside className="right-drawer">
             <div className="right-drawer-header">
@@ -1339,83 +1465,83 @@ function App() {
                   <div className="watchlist-toolbar">
                     <div>
                       <strong>Lista de observação</strong>
-
-                      <span>
-                        {symbolsAvailable} ativos disponíveis
-                      </span>
+                      <span>{symbolsAvailable} ativos disponíveis</span>
                     </div>
-
-                    <button type="button" title="Adicionar ativo">
+                    <button
+                      type="button"
+                      id="watchlist-add-btn"
+                      title="Adicionar ativo"
+                      onClick={() => setSymbolSearchOpen(true)}
+                    >
                       +
                     </button>
                   </div>
 
-                  {loadingSymbols && (
-                    <p className="drawer-message">
-                      Carregando ativos...
-                    </p>
+                  {/* Busca na watchlist */}
+                  <div className="watchlist-search-wrapper">
+                    <input
+                      type="text"
+                      id="watchlist-search-input"
+                      className="watchlist-search-input"
+                      placeholder="Filtrar watchlist..."
+                      value={watchlistSearch}
+                      onChange={(e) => setWatchlistSearch(e.target.value)}
+                      autoComplete="off"
+                    />
+                  </div>
+
+                  {loadingWatchlist && (
+                    <p className="drawer-message">Carregando watchlist...</p>
                   )}
 
-                  {!loadingSymbols && symbolsError && (
-                    <p className="drawer-message error">
-                      {symbolsError}
-                    </p>
-                  )}
-
-                  {loadingQuotes && (
-                    <p className="drawer-message">
-                      Carregando cotações...
-                    </p>
-                  )}
-
-                  {!loadingQuotes && quotesError && (
-                    <p className="drawer-message error">
-                      {quotesError}
-                    </p>
-                  )}
-
-                  <div className="terminal-watchlist">
-                    {markets.map((market) => (
-                      <button
-                        key={market.symbol}
-                        type="button"
-                        className={
-                          market.symbol === selectedSymbol
-                            ? 'terminal-watchlist-row selected'
-                            : 'terminal-watchlist-row'
-                        }
-                        onClick={() =>
-                          setSelectedSymbol(market.symbol)
-                        }
-                      >
-                        <div className="watchlist-symbol">
-                          <strong>{market.symbol}</strong>
-
-                          <span>
-                            {market.error
-                              ? 'Indisponível'
-                              : formatTime(market.time)}
-                          </span>
-                        </div>
-
-                        <div className="watchlist-values">
-                          <strong>
-                            {formatPrice(
-                              market.bid,
-                              market.digits ?? 2,
-                            )}
-                          </strong>
-
-                          <span>
-                            Venda{' '}
-                            {formatPrice(
-                              market.ask,
-                              market.digits ?? 2,
-                            )}
-                          </span>
-                        </div>
-                      </button>
-                    ))}
+                  <div className="terminal-watchlist" style={{ overflowY: 'auto', maxHeight: '100%' }}>
+                    {watchlistQuotes.length === 0 ? (
+                      <div className="drawer-message info">
+                        Sua watchlist está vazia. Clique em + acima para buscar e adicionar ativos do catálogo.
+                      </div>
+                    ) : (
+                      watchlistQuotes
+                        .filter((market) => {
+                          const sym = market.symbol || '';
+                          return !watchlistSearch || sym.toLowerCase().includes(watchlistSearch.toLowerCase());
+                        })
+                        .map((market) => (
+                          <div key={market.symbol} className="terminal-watchlist-row-wrapper">
+                            <button
+                              type="button"
+                              className={
+                                market.symbol === selectedSymbol
+                                  ? 'terminal-watchlist-row selected'
+                                  : 'terminal-watchlist-row'
+                              }
+                              onClick={() => setSelectedSymbol(market.symbol)}
+                            >
+                              <div className="watchlist-symbol">
+                                <strong>{market.symbol}</strong>
+                                <span>
+                                  {market.error
+                                    ? 'Indisponível'
+                                    : formatTime(market.time)}
+                                </span>
+                              </div>
+                              <div className="watchlist-values">
+                                <strong>
+                                  {formatPrice(market.bid, market.digits ?? 2)}
+                                </strong>
+                                <span>Venda {formatPrice(market.ask, market.digits ?? 2)}</span>
+                              </div>
+                            </button>
+                            <button
+                              type="button"
+                              className="watchlist-remove-btn"
+                              title={`Remover ${market.symbol} da watchlist`}
+                              onClick={() => handleRemoveFromWatchlist(market.symbol)}
+                            >
+                              ×
+                            </button>
+                          </div>
+                        ))
+                    )}
                   </div>
                 </>
               )}
@@ -1505,14 +1631,8 @@ function App() {
               )}
 
               {activeRightTab === 'alerts' && (
-                <div className="empty-module">
-                  <span>ALT</span>
-                  <strong>Central de alertas</strong>
-
-                  <p>
-                    Alertas de preço, indicadores, liquidez e
-                    estratégias aparecerão aqui.
-                  </p>
+                <div style={{ padding: '8px', overflowY: 'auto', height: '100%' }}>
+                  <MarketAlertsSection onNavigateToEvent={handleNavigateToEvent} />
                 </div>
               )}
 
@@ -1875,6 +1995,31 @@ function App() {
           </div>
         </footer>
       </section>
+
+      <HdfToastStack
+        toasts={toasts}
+        onDismiss={handleDismissToast}
+        onNavigate={handleNavigateToEvent}
+      />
+
+      {symbolSearchOpen && (
+        <SymbolSearchModal
+          symbols={symbols.map((s) => ({ symbol: s, name: s, category: 'OTHER' }))}
+          watchlist={watchlistQuotes.length > 0 ? watchlistQuotes : markets}
+          onAdd={handleAddToWatchlist}
+          onClose={() => setSymbolSearchOpen(false)}
+        />
+      )}
+
+      {indicatorManagerOpen && (
+        <IndicatorManagerModal
+          activeIndicators={userIndicators}
+          onAdd={handleAddUserIndicator}
+          onRemove={handleRemoveUserIndicator}
+          onToggleVisibility={handleToggleUserIndicatorVisibility}
+          onClose={() => setIndicatorManagerOpen(false)}
+        />
+      )}
     </div>
   );
 }

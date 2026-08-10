@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { LineSeries } from 'lightweight-charts';
 import { getCandles, getDivergences, getIndicators } from '../services/api';
+import { calculateEMA, calculateRSI } from '../indicators/calculations';
 
 import {
     createPriceScaleWheelHandler,
@@ -33,12 +34,20 @@ const HISTORY_PAGE_SIZE = 500;
 
 function MarketChart({
     symbol = 'XAUUSD',
-    timeframe = 'M5',
+    timeframe = 'H1',
+    timeframeMap = {},
     refreshInterval = 2000,
+    userIndicators = [],
+    onToggleIndicatorVisibility = null,
+    onRemoveIndicator = null,
+    onOpenIndicatorSettings = null,
     showRSI = false,
     showEMA50 = false,
     showEMA200 = false,
     showDivergences = false,
+    activeEvidenceEventId = null,
+    activeEvidenceData = null,
+    onClearEvidence = null,
 }) {
     const containerRef = useRef(null);
     const chartRef = useRef(null);
@@ -47,9 +56,16 @@ function MarketChart({
     const ema200SeriesRef = useRef(null);
     const rsiSeriesRef = useRef(null);
     const divergenceSeriesRef = useRef([]);
+    const userIndicatorSeriesRef = useRef(new Map());
 
     const [divergenceEvents, setDivergenceEvents] = useState([]);
     const [selectedDivergence, setSelectedDivergence] = useState(null);
+    const [legendCollapsedPrice, setLegendCollapsedPrice] = useState(false);
+    const [legendCollapsedRSI, setLegendCollapsedRSI] = useState(false);
+
+    const overlayIndicators = (userIndicators || []).filter((i) => i.type === 'ema');
+    const oscillatorIndicators = (userIndicators || []).filter((i) => i.type === 'rsi');
+    const hasVisibleRSI = (userIndicators || []).some((i) => i.type === 'rsi' && i.visible) || showRSI || !!activeEvidenceEventId;
 
     /*
      * Guarda qual ativo e timeframe pertencem atualmente
@@ -308,22 +324,7 @@ function MarketChart({
     useEffect(() => {
         let active = true;
 
-        const clearDivergences = () => {
-            const chart = chartRef.current;
-            if (chart && divergenceSeriesRef.current.length > 0) {
-                divergenceSeriesRef.current.forEach((s) => {
-                    try {
-                        chart.removeSeries(s);
-                    } catch {
-                        // ignore
-                    }
-                });
-                divergenceSeriesRef.current = [];
-            }
-        };
-
         if (!showDivergences) {
-            clearDivergences();
             setDivergenceEvents([]);
             setSelectedDivergence(null);
             return undefined;
@@ -334,65 +335,11 @@ function MarketChart({
                 const data = await getDivergences(symbol, timeframe, HISTORY_PAGE_SIZE, 0);
                 if (!active) return;
                 const events = data?.events || [];
+                // Alimenta o EvidenceDrawer para consulta histórica de pesquisa.
+                // NÃO desenha automaticamente linhas brutas acumuladas sobre o gráfico operacional.
                 setDivergenceEvents(events);
-
-                clearDivergences();
-                const chart = chartRef.current;
-                if (!chart || events.length === 0) return;
-
-                const parseTs = (tStr) => {
-                    if (!tStr) return 0;
-                    const d = new Date(tStr);
-                    return Math.floor(d.getTime() / 1000);
-                };
-
-                const newSeriesList = [];
-
-                events.forEach((evt) => {
-                    const meta = evt.metadata;
-                    if (!meta) return;
-
-                    const isBear = evt.direction === 'BEARISH';
-                    const color = isBear ? '#ff5f72' : '#21d68d';
-
-                    const t1 = parseTs(meta.pivot_1_time);
-                    const t2 = parseTs(meta.pivot_2_time);
-
-                    if (t1 > 0 && t2 > 0) {
-                        // Linha no gráfico principal (Preço)
-                        const pLine = chart.addSeries(LineSeries, {
-                            color,
-                            lineWidth: 2,
-                            priceLineVisible: false,
-                            lastValueVisible: false,
-                        });
-                        pLine.setData([
-                            { time: t1, value: meta.pivot_1_price },
-                            { time: t2, value: meta.pivot_2_price },
-                        ]);
-                        newSeriesList.push(pLine);
-
-                        // Linha no sub-painel RSI (se o RSI estiver visível)
-                        if (showRSI) {
-                            const rLine = chart.addSeries(LineSeries, {
-                                color,
-                                lineWidth: 2,
-                                priceScaleId: 'rsi_scale',
-                                priceLineVisible: false,
-                                lastValueVisible: false,
-                            });
-                            rLine.setData([
-                                { time: t1, value: meta.pivot_1_rsi },
-                                { time: t2, value: meta.pivot_2_rsi },
-                            ]);
-                            newSeriesList.push(rLine);
-                        }
-                    }
-                });
-
-                divergenceSeriesRef.current = newSeriesList;
             } catch (err) {
-                console.error('Erro ao carregar evidências de divergência:', err);
+                console.error('Erro ao carregar divergências históricas:', err);
             }
         }
 
@@ -400,9 +347,245 @@ function MarketChart({
 
         return () => {
             active = false;
-            clearDivergences();
         };
-    }, [showDivergences, showRSI, symbol, timeframe]);
+    }, [showDivergences, symbol, timeframe]);
+
+
+    // Evidence Mode: renderiza marcadores (P1, P2, CONFIRMED, ENTRY), segmento P1-P2 e segmento RSI R1-R2 do evento selecionado
+    useEffect(() => {
+        const chart = chartRef.current;
+        const mainSeries = seriesRef.current;
+
+        // Limpar linhas anteriores de evidence mode
+        divergenceSeriesRef.current.forEach((s) => {
+            try { chart?.removeSeries(s); } catch { }
+        });
+        divergenceSeriesRef.current = [];
+
+        if (!activeEvidenceEventId || !activeEvidenceData || !chart || !mainSeries) return;
+
+        const parseTs = (tStr) => {
+            if (!tStr) return 0;
+            const d = new Date(tStr);
+            return Math.floor(d.getTime() / 1000);
+        };
+
+        const isBull = activeEvidenceData.direction === 'BULLISH';
+        const color = isBull ? '#21d68d' : '#ff5f72';
+
+        const t1 = parseTs(activeEvidenceData.pivot_1_time);
+        const t2 = parseTs(activeEvidenceData.pivot_2_time);
+        const tConfirmed = parseTs(activeEvidenceData.confluence_time || activeEvidenceData.divergence_confirmed_at);
+        const tActivated = parseTs(activeEvidenceData.activated_at);
+
+        const newSeriesList = [];
+        const markers = [];
+
+        // 1. Event Markers no gráfico de preço
+        if (t1 > 0) {
+            markers.push({
+                time: t1,
+                position: isBull ? 'belowBar' : 'aboveBar',
+                color,
+                shape: 'square',
+                text: 'P1',
+            });
+        }
+        if (t2 > 0) {
+            markers.push({
+                time: t2,
+                position: isBull ? 'belowBar' : 'aboveBar',
+                color,
+                shape: 'square',
+                text: 'P2',
+            });
+        }
+        if (tConfirmed > 0 && tConfirmed !== t1 && tConfirmed !== t2) {
+            markers.push({
+                time: tConfirmed,
+                position: isBull ? 'belowBar' : 'aboveBar',
+                color,
+                shape: isBull ? 'arrowUp' : 'arrowDown',
+                text: 'HDF CONFIRMED',
+            });
+        } else if (tConfirmed > 0) {
+            markers.push({
+                time: tConfirmed,
+                position: isBull ? 'belowBar' : 'aboveBar',
+                color,
+                shape: isBull ? 'arrowUp' : 'arrowDown',
+                text: 'HDF CONFIRMED',
+            });
+        }
+
+        if (tActivated > 0) {
+            markers.push({
+                time: tActivated,
+                position: isBull ? 'belowBar' : 'aboveBar',
+                color: '#00e5ff',
+                shape: 'circle',
+                text: 'ENTRY',
+            });
+        }
+
+        // Ordenar markers por time ascendente
+        const sortedMarkers = markers
+            .filter((m) => m.time > 0)
+            .sort((a, b) => a.time - b.time);
+
+        try {
+            if (typeof mainSeries.setMarkers === 'function') {
+                mainSeries.setMarkers(sortedMarkers);
+            }
+        } catch (err) {
+            console.error('[HDF EVIDENCE] Erro ao aplicar markers:', err);
+        }
+
+        // 2. Segmento de Preço P1 -> P2 (PRICE DIVERGENCE SEGMENT)
+        if (t1 > 0 && t2 > 0) {
+            const pLine = chart.addSeries(LineSeries, {
+                color,
+                lineWidth: 2,
+                priceLineVisible: false,
+                lastValueVisible: false,
+            });
+            pLine.setData([
+                { time: t1, value: activeEvidenceData.pivot_1_price },
+                { time: t2, value: activeEvidenceData.pivot_2_price },
+            ]);
+            newSeriesList.push(pLine);
+
+            // 3. Segmento de RSI R1 -> R2 (RSI DIVERGENCE EVIDENCE)
+            if (showRSI && activeEvidenceData.pivot_1_rsi && activeEvidenceData.pivot_2_rsi) {
+                const rLine = chart.addSeries(LineSeries, {
+                    color,
+                    lineWidth: 2,
+                    priceLineVisible: false,
+                    lastValueVisible: false,
+                });
+                rLine.setData([
+                    { time: t1, value: activeEvidenceData.pivot_1_rsi },
+                    { time: t2, value: activeEvidenceData.pivot_2_rsi },
+                ]);
+                if (typeof rLine.moveToPane === 'function') {
+                    try {
+                        rLine.moveToPane(1);
+                        const panes = chart.panes();
+                        if (panes.length > 1) {
+                            panes[0].setStretchFactor(0.78);
+                            panes[1].setStretchFactor(0.22);
+                        }
+                    } catch { }
+                }
+                newSeriesList.push(rLine);
+            }
+        }
+
+        divergenceSeriesRef.current = newSeriesList;
+
+        // 4. Viewport Auto-Centering (Event Navigation)
+        const centerTs = tConfirmed > 0 ? tConfirmed : (t2 > 0 ? t2 : t1);
+        if (centerTs > 0) {
+            const rangeFrom = (t1 > 0 ? Math.min(t1, centerTs) : centerTs) - 3600 * 12;
+            const rangeTo = centerTs + 3600 * 24;
+            try {
+                chart.timeScale().setVisibleRange({ from: rangeFrom, to: rangeTo });
+            } catch { }
+        }
+
+        return () => {
+            newSeriesList.forEach((s) => {
+                try { chart?.removeSeries(s); } catch { }
+            });
+            if (mainSeries && typeof mainSeries.setMarkers === 'function') {
+                try { mainSeries.setMarkers([]); } catch { }
+            }
+        };
+    }, [activeEvidenceEventId, activeEvidenceData, showRSI]);
+
+    // Atualização dinâmica dos indicadores do usuário (Fase 3C)
+    useEffect(() => {
+        const chart = chartRef.current;
+        if (!chart) return;
+
+        const candles = candlesRef.current || [];
+        const activeMap = new Map();
+
+        // 1. Processar cada indicador ativo do usuário
+        (userIndicators || []).forEach((ind) => {
+            if (!ind.visible || !ind.instanceId) return;
+
+            activeMap.set(ind.instanceId, true);
+
+            let data = [];
+            if (ind.type === 'ema') {
+                data = calculateEMA(candles, ind.period);
+            } else if (ind.type === 'rsi') {
+                data = calculateRSI(candles, ind.period);
+            }
+
+            if (userIndicatorSeriesRef.current.has(ind.instanceId)) {
+                const s = userIndicatorSeriesRef.current.get(ind.instanceId);
+                s.setData(data);
+                s.applyOptions({ color: ind.color });
+            } else {
+                const title = `${ind.type.toUpperCase()} ${ind.period}`;
+                const options = {
+                    color: ind.color,
+                    lineWidth: 2,
+                    priceLineVisible: false,
+                    lastValueVisible: true,
+                    title,
+                };
+                const s = chart.addSeries(LineSeries, options);
+                s.setData(data);
+
+                if (ind.type === 'rsi') {
+                    // Mover para o Pane 1 nativo no Lightweight Charts 5.2.0
+                    if (typeof s.moveToPane === 'function') {
+                        try {
+                            s.moveToPane(1);
+                            const panes = chart.panes();
+                            if (panes.length > 1) {
+                                panes[0].setStretchFactor(0.78);
+                                panes[1].setStretchFactor(0.22);
+                            }
+                        } catch { }
+                    }
+                    // Adicionar níveis 70, 50, 30 de sobrecompra/equilíbrio/sobrevenda
+                    try {
+                        s.createPriceLine({ price: 70, color: '#ff5f72', lineWidth: 1, lineStyle: 2, title: '70' });
+                        s.createPriceLine({ price: 50, color: '#64748b', lineWidth: 1, lineStyle: 2, title: '50' });
+                        s.createPriceLine({ price: 30, color: '#21d68d', lineWidth: 1, lineStyle: 2, title: '30' });
+                    } catch { }
+                }
+
+                userIndicatorSeriesRef.current.set(ind.instanceId, s);
+            }
+        });
+
+        // 2. Remover séries de indicadores desativados ou excluídos
+        for (const [id, s] of userIndicatorSeriesRef.current.entries()) {
+            if (!activeMap.has(id)) {
+                try {
+                    chart.removeSeries(s);
+                } catch { }
+                userIndicatorSeriesRef.current.delete(id);
+            }
+        }
+
+        // 3. Ajustar pane nativo do RSI
+        const hasVisibleRSI = (userIndicators || []).some((i) => i.type === 'rsi' && i.visible) || showRSI || !!activeEvidenceEventId;
+        if (!hasVisibleRSI && typeof chart.removePane === 'function') {
+            try {
+                const panes = chart.panes();
+                if (panes.length > 1) {
+                    chart.removePane(1);
+                    if (panes[0]) panes[0].setStretchFactor(1.0);
+                }
+            } catch { }
+        }
+    }, [userIndicators, symbol, timeframe, showRSI, activeEvidenceEventId, loading]);
 
 
     /*
@@ -785,6 +968,114 @@ function MarketChart({
                 <span>{timeframe}</span>
             </div>
 
+            {/* Legenda Compacta do Price Pane (sobreposições EMA) */}
+            {overlayIndicators.length > 0 && (
+                <div className="market-chart-indicator-legend price-pane">
+                    <button
+                        type="button"
+                        className="indicator-legend-toggle-btn"
+                        onClick={() => setLegendCollapsedPrice((c) => !c)}
+                        title={legendCollapsedPrice ? 'Expandir legenda de preço' : 'Recolher legenda de preço'}
+                    >
+                        {legendCollapsedPrice ? '▸' : '▾'} Preço ({overlayIndicators.length})
+                    </button>
+
+                    {!legendCollapsedPrice && (
+                        <div className="indicator-legend-list">
+                            {overlayIndicators.map((ind) => (
+                                <div key={ind.instanceId} className="indicator-legend-item">
+                                    <span
+                                        className="indicator-legend-dot"
+                                        style={{ backgroundColor: ind.color }}
+                                    />
+                                    <span className="indicator-legend-name">
+                                        {ind.type.toUpperCase()} {ind.period}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        className="indicator-legend-action-btn"
+                                        onClick={() => onToggleIndicatorVisibility && onToggleIndicatorVisibility(ind.instanceId)}
+                                        title={ind.visible ? 'Ocultar indicador' : 'Exibir indicador'}
+                                    >
+                                        {ind.visible ? '👁' : '🙈'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="indicator-legend-action-btn"
+                                        onClick={() => onOpenIndicatorSettings && onOpenIndicatorSettings(ind)}
+                                        title="Configurações do indicador"
+                                    >
+                                        ⚙
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="indicator-legend-action-btn remove"
+                                        onClick={() => onRemoveIndicator && onRemoveIndicator(ind.instanceId)}
+                                        title="Remover indicador"
+                                    >
+                                        ×
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Legenda Compacta do RSI Pane (oscilador RSI) */}
+            {hasVisibleRSI && oscillatorIndicators.length > 0 && (
+                <div className="market-chart-indicator-legend rsi-pane">
+                    <button
+                        type="button"
+                        className="indicator-legend-toggle-btn"
+                        onClick={() => setLegendCollapsedRSI((c) => !c)}
+                        title={legendCollapsedRSI ? 'Expandir legenda RSI' : 'Recolher legenda RSI'}
+                    >
+                        {legendCollapsedRSI ? '▸' : '▾'} RSI ({oscillatorIndicators.length})
+                    </button>
+
+                    {!legendCollapsedRSI && (
+                        <div className="indicator-legend-list">
+                            {oscillatorIndicators.map((ind) => (
+                                <div key={ind.instanceId} className="indicator-legend-item">
+                                    <span
+                                        className="indicator-legend-dot"
+                                        style={{ backgroundColor: ind.color }}
+                                    />
+                                    <span className="indicator-legend-name">
+                                        {ind.type.toUpperCase()} {ind.period}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        className="indicator-legend-action-btn"
+                                        onClick={() => onToggleIndicatorVisibility && onToggleIndicatorVisibility(ind.instanceId)}
+                                        title={ind.visible ? 'Ocultar indicador' : 'Exibir indicador'}
+                                    >
+                                        {ind.visible ? '👁' : '🙈'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="indicator-legend-action-btn"
+                                        onClick={() => onOpenIndicatorSettings && onOpenIndicatorSettings(ind)}
+                                        title="Configurações do indicador"
+                                    >
+                                        ⚙
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="indicator-legend-action-btn remove"
+                                        onClick={() => onRemoveIndicator && onRemoveIndicator(ind.instanceId)}
+                                        title="Remover indicador"
+                                    >
+                                        ×
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
             {loading && (
                 <div className="market-chart-state">
                     <strong>
@@ -803,59 +1094,33 @@ function MarketChart({
                 </div>
             )}
 
-            {showDivergences && divergenceEvents.length > 0 && (
-                <div className="divergence-overlay-badge-list">
-                    <span className="divergence-badge-title">Evidências HDM ({divergenceEvents.length}):</span>
-                    {divergenceEvents.map((evt, idx) => {
-                        const isBear = evt.direction === 'BEARISH';
-                        return (
-                            <button
-                                key={idx}
-                                type="button"
-                                className={`divergence-badge ${isBear ? 'bearish' : 'bullish'} ${selectedDivergence === evt ? 'active' : ''}`}
-                                onClick={() => setSelectedDivergence(evt)}
-                            >
-                                {isBear ? '🔻 Baixista' : '🔺 Altista'} #{idx + 1}
-                            </button>
-                        );
-                    })}
-                </div>
-            )}
-
-            {selectedDivergence && (
-                <div className="divergence-card-overlay">
-                    <div className="divergence-card-header">
-                        <strong>HDM — Divergência ({selectedDivergence.direction === 'BEARISH' ? 'Baixista' : 'Altista'})</strong>
-                        <button type="button" className="close-btn" onClick={() => setSelectedDivergence(null)}>✕</button>
+            {/* Evidence Mode - mostra somente o evento ativo, não histórico acumulado */}
+            {activeEvidenceEventId && activeEvidenceData && (
+                <div className="evidence-mode-overlay">
+                    <div className="evidence-mode-header">
+                        <span className="evidence-mode-badge">EVIDENCE MODE</span>
+                        <strong className="evidence-mode-title">
+                            {activeEvidenceData.symbol} • {activeEvidenceData.timeframe} • {activeEvidenceData.direction === 'BULLISH' ? '🔺 Alta' : '🔻 Baixa'}
+                        </strong>
+                        <button
+                            type="button"
+                            className="evidence-mode-close"
+                            onClick={() => onClearEvidence && onClearEvidence()}
+                            aria-label="Fechar Evidence Mode"
+                        >
+                            FECHAR EVIDÊNCIA ×
+                        </button>
                     </div>
-                    <div className="divergence-card-body">
-                        <div className="card-row">
-                            <span>Ativo / Timeframe:</span>
-                            <strong>{selectedDivergence.symbol} ({selectedDivergence.timeframe})</strong>
-                        </div>
-                        <div className="card-row">
-                            <span>Pivô 1 (Preço | RSI):</span>
-                            <strong>{selectedDivergence.metadata?.pivot_1_price} | RSI {selectedDivergence.metadata?.pivot_1_rsi}</strong>
-                        </div>
-                        <div className="card-row">
-                            <span>Pivô 2 (Preço | RSI):</span>
-                            <strong>{selectedDivergence.metadata?.pivot_2_price} | RSI {selectedDivergence.metadata?.pivot_2_rsi}</strong>
-                        </div>
-                        <div className="card-row">
-                            <span>P1 Timestamp:</span>
-                            <small>{selectedDivergence.metadata?.pivot_1_time}</small>
-                        </div>
-                        <div className="card-row">
-                            <span>P2 Timestamp:</span>
-                            <small>{selectedDivergence.metadata?.pivot_2_time}</small>
-                        </div>
-                        <div className="card-row">
-                            <span>Confirmado em:</span>
-                            <small>{selectedDivergence.metadata?.confirmed_at}</small>
-                        </div>
-                        <div className="card-row note">
-                            <em>{selectedDivergence.reasons?.[0]}</em>
-                        </div>
+                    <div className="evidence-mode-levels">
+                        {activeEvidenceData.activation_level > 0 && (
+                            <span className="evidence-level-item activation">Ativação: {activeEvidenceData.activation_level?.toFixed(5)}</span>
+                        )}
+                        {activeEvidenceData.initial_stop > 0 && (
+                            <span className="evidence-level-item stop">Stop: {activeEvidenceData.initial_stop?.toFixed(5)}</span>
+                        )}
+                        {activeEvidenceData.target_2R > 0 && (
+                            <span className="evidence-level-item target">2R: {activeEvidenceData.target_2R?.toFixed(5)}</span>
+                        )}
                     </div>
                 </div>
             )}

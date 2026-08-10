@@ -17,10 +17,12 @@ env/
 # Environment variables
 .env
 
-# Data Cache Local
+# Data Cache Local & Scratch
 data_cache/*.csv
 data_cache/*_meta.json
-scratch/test_cache/
+data_cache/*.db
+data_cache/*.json
+scratch/
 
 # OS
 .DS_Store

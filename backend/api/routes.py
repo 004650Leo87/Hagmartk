@@ -74,23 +74,17 @@ def get_quote(symbol: str):
 @router.get("/market/quotes")
 def get_quotes():
     """
-    Retorna as cotações dos ativos favoritos do painel.
+    Retorna as cotações dos ativos na watchlist do usuário.
+    Removida a limitação hardcoded de 5 ativos.
     """
-    favoritos = [
-        "XAUUSD",
-        "EURUSD",
-        "GBPUSD",
-        "USDJPY",
-        "BTCUSD",
-    ]
-
     try:
-        return market.quotes(favoritos)
+        symbols = _load_watchlist()
+        return market.quotes(symbols)
 
     except Exception as error:
         raise HTTPException(
             status_code=500,
-            detail=f"Erro ao carregar as cotações: {error}",
+            detail=f"Erro ao carregar as cotações da watchlist: {error}",
         ) from error
 
 
@@ -571,4 +565,103 @@ def detect_divergences(
     except ValueError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
     except Exception as error:
-        raise HTTPException(status_code=500, detail=f"Erro na detecção de divergências: {error}") from error
+        raise HTTPException(status_code=500, detail=f"Erro na detecção de divergências: {error}") from error
+
+
+import json as _json
+import os as _os
+
+WATCHLIST_PATH = "data_cache/watchlist.json"
+
+DEFAULT_WATCHLIST = [
+    "XAUUSD", "EURUSD", "GBPUSD", "USDJPY", "BTCUSD",
+    "ETHUSD", "XAGUSD", "AUDUSD", "USDCHF", "USDCAD",
+    "NZDUSD", "EURJPY", "GBPJPY",
+]
+
+
+def _load_watchlist() -> list[str]:
+    try:
+        if _os.path.exists(WATCHLIST_PATH):
+            with open(WATCHLIST_PATH, "r", encoding="utf-8") as f:
+                data = _json.load(f)
+                if isinstance(data, list):
+                    return data
+    except Exception:
+        pass
+    return list(DEFAULT_WATCHLIST)
+
+
+def _save_watchlist(symbols: list[str]) -> None:
+    _os.makedirs(_os.path.dirname(WATCHLIST_PATH), exist_ok=True)
+    with open(WATCHLIST_PATH, "w", encoding="utf-8") as f:
+        _json.dump(symbols, f)
+
+
+@router.get("/market/watchlist")
+def get_watchlist():
+    """
+    Retorna a watchlist personalizada do usuário.
+    Estrutura independente do catálogo completo e do Shadow Universe.
+    """
+    symbols = _load_watchlist()
+    result = []
+    for sym in symbols:
+        try:
+            q = market.quote(sym)
+            result.append(q)
+        except Exception:
+            result.append({"symbol": sym, "bid": None, "ask": None, "spread_points": None, "digits": 2, "time": None, "error": "indisponível"})
+    return result
+
+
+@router.get("/market/watchlist/symbols")
+def get_watchlist_symbols():
+    """Retorna apenas os símbolos da watchlist (sem cotações)."""
+    return {"symbols": _load_watchlist()}
+
+
+@router.post("/market/watchlist/add")
+def add_to_watchlist(body: dict):
+    """
+    Adiciona um símbolo à watchlist do usuário.
+    Body: {"symbol": "EURUSD"}
+    """
+    symbol = body.get("symbol", "").strip().upper()
+    if not symbol:
+        raise HTTPException(status_code=400, detail="Símbolo não informado.")
+    wl = _load_watchlist()
+    if symbol not in wl:
+        wl.append(symbol)
+        _save_watchlist(wl)
+    return {"symbols": wl, "added": symbol}
+
+
+@router.delete("/market/watchlist/{symbol}")
+def remove_from_watchlist(symbol: str):
+    """
+    Remove um símbolo da watchlist do usuário.
+    O Shadow Universe NÃO é afetado por esta operação.
+    """
+    symbol = symbol.strip().upper()
+    wl = _load_watchlist()
+    if symbol in wl:
+        wl.remove(symbol)
+        _save_watchlist(wl)
+    return {"symbols": wl, "removed": symbol}
+
+
+@router.get("/market/catalog")
+def get_market_catalog():
+    """
+    Retorna o catálogo completo de ativos disponíveis no MetaTrader 5.
+    Inclui category, description, visible, enabled, source, broker.
+    NÃO representa a watchlist pessoal nem o Shadow Universe.
+    """
+    try:
+        return market.detailed_symbols()
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro ao carregar o catálogo de ativos: {error}",
+        ) from error

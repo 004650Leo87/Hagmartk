@@ -159,3 +159,117 @@ export async function getAccountPositions() {
 export async function getTodayHistory() {
   return apiRequest('/account/history/today');
 }
+
+/* =====================================================
+   SHADOW MODE
+===================================================== */
+
+export async function getShadowStatus() {
+  return apiRequest('/api/shadow/status');
+}
+
+export async function getShadowCandidates() {
+  return apiRequest('/api/shadow/candidates');
+}
+
+export async function enableShadowCandidate(candidateId = 'hdf_dvp_exit_2r') {
+  return apiRequest(`/api/shadow/${encodeURIComponent(candidateId)}/enable`, {
+    method: 'POST',
+  });
+}
+
+export async function disableShadowCandidate(candidateId = 'hdf_dvp_exit_2r') {
+  return apiRequest(`/api/shadow/${encodeURIComponent(candidateId)}/disable`, {
+    method: 'POST',
+  });
+}
+
+export async function getShadowEvents() {
+  return apiRequest('/api/shadow/events');
+}
+
+export async function getShadowEventDetail(eventId) {
+  return apiRequest(`/api/shadow/events/${encodeURIComponent(eventId)}`);
+}
+
+export async function getActiveShadowAlerts() {
+  return apiRequest('/api/shadow/active');
+}
+
+export async function getCompletedShadowHistory() {
+  return apiRequest('/api/shadow/history');
+}
+
+export async function getShadowStatistics() {
+  return apiRequest('/api/shadow/statistics');
+}
+
+export async function getShadowScanners() {
+  return apiRequest('/api/shadow/scanners');
+}
+
+/* =====================================================
+   WATCHLIST
+===================================================== */
+
+export async function getWatchlist() {
+  return apiRequest('/market/watchlist');
+}
+
+export async function getWatchlistSymbols() {
+  return apiRequest('/market/watchlist/symbols');
+}
+
+export async function addToWatchlist(symbol) {
+  return apiRequest('/market/watchlist/add', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ symbol }),
+  });
+}
+
+export async function removeFromWatchlist(symbol) {
+  return apiRequest(`/market/watchlist/${encodeURIComponent(symbol)}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function getMarketCatalog() {
+  return apiRequest('/market/catalog');
+}
+
+/* =====================================================
+   SHADOW EVENTS EXTRAS
+===================================================== */
+
+export async function getShadowRecentEvents(n = 20) {
+  return apiRequest(`/api/shadow/events/recent?n=${n}`);
+}
+
+export async function getShadowEventsPage(limit = 20, offset = 0) {
+  return apiRequest(`/api/shadow/events?limit=${limit}&offset=${offset}`);
+}
+
+export async function getShadowNavigationPayload(eventId) {
+  return apiRequest(`/api/shadow/navigation/${encodeURIComponent(eventId)}`);
+}
+
+export async function getShadowCatalog() {
+  return apiRequest('/api/shadow/catalog');
+}
+
+export async function getShadowForwardValidation(candidateId = 'hdf_dvp_exit_2r') {
+  return apiRequest(`/api/shadow/forward-validation?candidate_id=${encodeURIComponent(candidateId)}`);
+}
+
+export async function getShadowStatisticalValidation(candidateId = 'hdf_dvp_exit_2r') {
+  return apiRequest(`/api/shadow/statistical-validation?candidate_id=${encodeURIComponent(candidateId)}`);
+}
+
+export async function getShadowTelemetry(candidateId = 'hdf_dvp_exit_2r') {
+  return apiRequest(`/api/shadow/telemetry?candidate_id=${encodeURIComponent(candidateId)}`);
+}
+
+export async function getShadowIntelligence(candidateId = 'hdf_dvp_exit_2r') {
+  return apiRequest(`/api/shadow/intelligence?candidate_id=${encodeURIComponent(candidateId)}`);
+}
