@@ -82,11 +82,11 @@ export default function ContextPanel({
               </button>
             </div>
 
-            <div className="hk-wl-table-header">
-              <span>ATIVO</span>
-              <span>BID</span>
-              <span>ASK</span>
-              <span>SPREAD</span>
+            <div className="hk-wl-table-header notranslate">
+              <span className="notranslate">ATIVO</span>
+              <span className="notranslate">BID</span>
+              <span className="notranslate">ASK</span>
+              <span className="notranslate">SPREAD</span>
               <span></span>
             </div>
 

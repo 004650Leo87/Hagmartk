@@ -7,7 +7,13 @@ import {
     createChart,
 } from 'lightweight-charts';
 
-export function createMarketChart(container) {
+export function createMarketChart(container, initialTheme = 'black-piano') {
+    const isLight = initialTheme === 'flight-deck-light' || initialTheme === 'light';
+    const bgColor = isLight ? '#f8fafc' : '#050a11';
+    const textColor = isLight ? '#334155' : '#8194b2';
+    const gridColor = isLight ? 'rgba(203, 213, 225, 0.45)' : 'rgba(116, 137, 168, 0.08)';
+    const borderColor = isLight ? '#cbd5e1' : '#1d2a3c';
+
     const chart = createChart(container, {
         width: Math.max(container.clientWidth, 1),
         height: Math.max(container.clientHeight, 1),
@@ -15,18 +21,18 @@ export function createMarketChart(container) {
         layout: {
             background: {
                 type: ColorType.Solid,
-                color: '#050a11',
+                color: bgColor,
             },
-            textColor: '#8194b2',
+            textColor,
             attributionLogo: false,
         },
 
         grid: {
             vertLines: {
-                color: 'rgba(116, 137, 168, 0.08)',
+                color: gridColor,
             },
             horzLines: {
-                color: 'rgba(116, 137, 168, 0.08)',
+                color: gridColor,
             },
         },
 
@@ -67,14 +73,14 @@ export function createMarketChart(container) {
 
         rightPriceScale: {
             visible: true,
-            borderColor: '#1d2a3c',
+            borderColor,
         },
 
         timeScale: {
             visible: true,
             timeVisible: true,
             secondsVisible: false,
-            borderColor: '#1d2a3c',
+            borderColor,
             rightOffset: 8,
             barSpacing: 8,
             tickMarkFormatter: (timestamp, tickMarkType) => {
@@ -194,9 +200,9 @@ export function createMarketChart(container) {
     // Escala RSI: mesma aparência da escala de preço (neutro, sem badges)
     try {
         chart.priceScale('right', 1).applyOptions({
-            borderColor: 'rgba(148, 163, 184, 0.15)',
+            borderColor,
             autoScale: true,
-            textColor: '#94A3B8',
+            textColor,
         });
     } catch { }
 

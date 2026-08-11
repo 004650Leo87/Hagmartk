@@ -131,7 +131,7 @@ function MarketChart({
             ema50Series,
             ema200Series,
             rsiSeries,
-        } = createMarketChart(container);
+        } = createMarketChart(container, theme);
 
         chartRef.current = chart;
         seriesRef.current = series;
@@ -295,30 +295,47 @@ function MarketChart({
 useEffect(() => {
     if (!chartRef.current) return;
     const isLight = theme === 'flight-deck-light' || theme === 'light';
+    const bgColor = isLight ? '#f8fafc' : '#050a11';
+    const textColor = isLight ? '#334155' : '#8194b2';
+    const gridColor = isLight ? 'rgba(203, 213, 225, 0.45)' : 'rgba(116, 137, 168, 0.08)';
+    const borderColor = isLight ? '#cbd5e1' : '#1d2a3c';
+    const crosshairColor = isLight ? 'rgba(100, 116, 139, 0.4)' : 'rgba(116, 137, 168, 0.3)';
+
     try {
         chartRef.current.applyOptions({
             layout: {
                 background: {
                     type: ColorType.Solid,
-                    color: isLight ? '#ffffff' : '#050a11',
+                    color: bgColor,
                 },
-                textColor: isLight ? '#334155' : '#8194b2',
+                textColor: textColor,
             },
             grid: {
-                vertLines: {
-                    color: isLight ? 'rgba(203, 213, 225, 0.6)' : 'rgba(116, 137, 168, 0.08)',
-                },
-                horzLines: {
-                    color: isLight ? 'rgba(203, 213, 225, 0.6)' : 'rgba(116, 137, 168, 0.08)',
-                },
+                vertLines: { color: gridColor },
+                horzLines: { color: gridColor },
+            },
+            crosshair: {
+                vertLine: { color: crosshairColor },
+                horzLine: { color: crosshairColor },
             },
             rightPriceScale: {
-                borderColor: isLight ? '#cbd5e1' : 'rgba(116, 137, 168, 0.18)',
+                borderColor: borderColor,
             },
             timeScale: {
-                borderColor: isLight ? '#cbd5e1' : 'rgba(116, 137, 168, 0.18)',
+                borderColor: borderColor,
             },
         });
+
+        try {
+            chartRef.current.priceScale('right', 0)?.applyOptions({
+                borderColor: borderColor,
+                textColor: textColor,
+            });
+            chartRef.current.priceScale('right', 1)?.applyOptions({
+                borderColor: borderColor,
+                textColor: textColor,
+            });
+        } catch { }
     } catch (e) {
         console.error('[THEME UPDATE] Erro ao aplicar opções de tema no gráfico:', e);
     }
