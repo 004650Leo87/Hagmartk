@@ -311,3 +311,7 @@ export async function getShadowObservationHistory(candidateId = 'hdf_dvp_exit_2r
 export async function getShadowObservationDrilldown(symbol, timeframe, candidateId = 'hdf_dvp_exit_2r') {
   return apiRequest(`/api/shadow/observation/${encodeURIComponent(symbol)}/${encodeURIComponent(timeframe)}?candidate_id=${encodeURIComponent(candidateId)}`);
 }
+
+export async function getShadowHeartbeat(candidateId = 'hdf_dvp_exit_2r') {
+  return apiRequest(`/api/shadow/heartbeat?candidate_id=${encodeURIComponent(candidateId)}`);
+}

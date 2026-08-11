@@ -173,6 +173,8 @@ class ShadowScannerManager:
             candidate_id=HDF_ROBUST_CANDIDATE_V1.candidate_id, symbol=symbol, timeframe=timeframe
         )
 
+        st.scan_cycle_count_total += 1
+
         if df_candles.empty:
             st.scanner_status = ScannerStatus.WAITING_NEW_CANDLE.value
             st.last_scan_at = now_str
@@ -197,15 +199,23 @@ class ShadowScannerManager:
         last_closed_time = str(df_closed["time"].iloc[-1])
 
         if st.last_processed_candle == last_closed_time and not is_synthetic:
+            st.scanner_status = ScannerStatus.WAITING_NEW_CANDLE.value
+            st.last_scan_at = now_str
+            self.store.save_scanner_state(st)
             _logger.debug(
                 "[SHADOW] DUPLICATE_SKIPPED: candle %s %s %s já processado",
                 symbol, timeframe, last_closed_time,
             )
             return []
 
+        # Novo candle fechado detectado — incrementa contador de avaliações HDF reais
+        st.evaluation_count_total += 1
+        st.last_evaluated_candle_time = last_closed_time
+        st.last_evaluation_at = now_str
+
         _logger.info(
-            "[SHADOW] NEW_CLOSED_CANDLE: symbol=%s tf=%s candle_time=%s scan_time=%s",
-            symbol, timeframe, last_closed_time, now_str,
+            "[SHADOW] NEW_CLOSED_CANDLE: symbol=%s tf=%s candle_time=%s scan_time=%s eval_total=%d",
+            symbol, timeframe, last_closed_time, now_str, st.evaluation_count_total,
         )
 
         # Registra telemetria de sucesso na varredura da combinação
@@ -442,6 +452,18 @@ class ShadowScannerManager:
                     symbol, timeframe, last_closed_time, dedup_key,
                 )
 
+        # Determina o maior estágio HDF encontrado no ciclo de avaliação
+        highest_stage = "NONE"
+        for occ in occurrences:
+            stg = getattr(occ, "variant_stage", "NONE") or getattr(occ, "state", None)
+            if hasattr(stg, "value"):
+                stg = stg.value
+            stg_str = str(stg)
+            if stg_str in ("HDF_DVP", "HDF_DV", "HDF_DP", "HDF_D"):
+                highest_stage = stg_str
+                break
+        st.last_result_stage = highest_stage
+
         # Atualiza scanner_state final
         st.last_processed_candle = last_closed_time
         st.last_scan_at = now_str
@@ -476,7 +498,7 @@ class ShadowScannerManager:
 
         return summary
 
-    def start_auto_scheduler(self, adapter: Any = None, interval_seconds: float = 15.0) -> None:
+    def start_auto_scheduler(self, adapter: Any = None, interval_seconds: float = 3.0) -> None:
         """Inicia a thread de fundo autônoma para polling e escaneamento do Shadow Universe."""
         import threading
         import time
@@ -512,13 +534,18 @@ class ShadowScannerManager:
                             if not getattr(self, "_scheduler_running", False):
                                 break
                             tf_const = tf_map.get(tf.upper(), 15)
+                            df_candles = pd.DataFrame()
                             try:
                                 candles_list = current_adapter.get_candles(sym, tf_const, count=100)
                                 if candles_list:
                                     df_candles = pd.DataFrame(candles_list)
-                                    self.scan_closed_candle(sym, tf, df_candles)
                             except Exception as _err:
                                 _logger.debug("[SHADOW] Pulo por indisponibilidade/erro em %s %s: %s", sym, tf, _err)
+
+                            try:
+                                self.scan_closed_candle(sym, tf, df_candles)
+                            except Exception as _scan_err:
+                                _logger.warning("[SHADOW] Erro em scan_closed_candle para %s %s: %s", sym, tf, _scan_err)
                 except Exception as ex:
                     _logger.warning("[SHADOW] Exceção no loop do scheduler autônomo: %s", ex)
 
@@ -583,10 +610,18 @@ class ShadowScannerManager:
                             else:
                                 stage = "HDF_D"
 
-                            p1_rsi = float(rsi_series.iloc[p1.index])
-                            p2_rsi = float(rsi_series.iloc[p2.index])
+                            # Ancoragem visual no fundo real do RSI na janela do pivô
+                            p1_win = rsi_series.iloc[max(0, p1.index - self.strategy.pivot_left) : min(len(df_calc), p1.index + self.strategy.pivot_right + 1)]
+                            p1_rsi_idx = int(p1_win.idxmin())
+                            p1_rsi = float(rsi_series.iloc[p1_rsi_idx])
+                            p1_time_str = str(df_calc["time"].iloc[p1_rsi_idx])
 
-                            t_clean = str(p2.time).replace(":", "").replace(" ", "_").replace("-", "")
+                            p2_win = rsi_series.iloc[max(0, p2.index - self.strategy.pivot_left) : min(len(df_calc), p2.index + self.strategy.pivot_right + 1)]
+                            p2_rsi_idx = int(p2_win.idxmin())
+                            p2_rsi = float(rsi_series.iloc[p2_rsi_idx])
+                            p2_time_str = str(df_calc["time"].iloc[p2_rsi_idx])
+
+                            t_clean = p2_time_str.replace(":", "").replace(" ", "_").replace("-", "").replace("+", "").replace("T", "_")
                             ev_id = f"ev_bull_{symbol}_{timeframe}_{t_clean}"
                             pat_str = pattern_type.value if hasattr(pattern_type, "value") else str(pattern_type)
                             source_val = "TEST" if is_synthetic else "LIVE_PROSPECTIVE"
@@ -604,10 +639,10 @@ class ShadowScannerManager:
                                 timeframe=timeframe,
                                 asset_class=asset_class,
                                 direction="BULLISH",
-                                pivot_1_time=str(p1.time),
+                                pivot_1_time=p1_time_str,
                                 pivot_1_price=p1_price_val,
                                 pivot_1_rsi=p1_rsi,
-                                pivot_2_time=str(p2.time),
+                                pivot_2_time=p2_time_str,
                                 pivot_2_price=p2_price_val,
                                 pivot_2_rsi=p2_rsi,
                                 divergence_confirmed=True,
@@ -650,10 +685,18 @@ class ShadowScannerManager:
                             else:
                                 stage = "HDF_D"
 
-                            p1_rsi = float(rsi_series.iloc[p1.index])
-                            p2_rsi = float(rsi_series.iloc[p2.index])
+                            # Ancoragem visual no topo real do RSI na janela do pivô
+                            p1_win = rsi_series.iloc[max(0, p1.index - self.strategy.pivot_left) : min(len(df_calc), p1.index + self.strategy.pivot_right + 1)]
+                            p1_rsi_idx = int(p1_win.idxmax())
+                            p1_rsi = float(rsi_series.iloc[p1_rsi_idx])
+                            p1_time_str = str(df_calc["time"].iloc[p1_rsi_idx])
 
-                            t_clean = str(p2.time).replace(":", "").replace(" ", "_").replace("-", "")
+                            p2_win = rsi_series.iloc[max(0, p2.index - self.strategy.pivot_left) : min(len(df_calc), p2.index + self.strategy.pivot_right + 1)]
+                            p2_rsi_idx = int(p2_win.idxmax())
+                            p2_rsi = float(rsi_series.iloc[p2_rsi_idx])
+                            p2_time_str = str(df_calc["time"].iloc[p2_rsi_idx])
+
+                            t_clean = p2_time_str.replace(":", "").replace(" ", "_").replace("-", "").replace("+", "").replace("T", "_")
                             ev_id = f"ev_bear_{symbol}_{timeframe}_{t_clean}"
                             pat_str = pattern_type.value if hasattr(pattern_type, "value") else str(pattern_type)
                             source_val = "TEST" if is_synthetic else "LIVE_PROSPECTIVE"
@@ -671,10 +714,10 @@ class ShadowScannerManager:
                                 timeframe=timeframe,
                                 asset_class=asset_class,
                                 direction="BEARISH",
-                                pivot_1_time=str(p1.time),
+                                pivot_1_time=p1_time_str,
                                 pivot_1_price=p1_price_val,
                                 pivot_1_rsi=p1_rsi,
-                                pivot_2_time=str(p2.time),
+                                pivot_2_time=p2_time_str,
                                 pivot_2_price=p2_price_val,
                                 pivot_2_rsi=p2_rsi,
                                 divergence_confirmed=True,

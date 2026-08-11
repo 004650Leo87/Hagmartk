@@ -185,6 +185,11 @@ class ShadowScannerState:
     last_scan_at: str = ""
     scanner_status: str = "RUNNING"
     error_message: str = ""
+    scan_cycle_count_total: int = 0
+    evaluation_count_total: int = 0
+    last_evaluated_candle_time: str = ""
+    last_evaluation_at: str = ""
+    last_result_stage: str = "NONE"
 
 
 @dataclass

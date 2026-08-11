@@ -381,12 +381,14 @@ useEffect(() => {
         const mainSeries = seriesRef.current;
 
         // Cleanup de séries anteriores de evidência
-        divergenceSeriesRef.current.forEach((s) => {
-            try { chart?.removeSeries(s); } catch { }
-        });
-        divergenceSeriesRef.current = [];
+        if (divergenceSeriesRef.current?.length) {
+            divergenceSeriesRef.current.forEach((s) => {
+                try { chart?.removeSeries(s); } catch { }
+            });
+            divergenceSeriesRef.current = [];
+        }
 
-        if (!chart || !mainSeries || !showDivergencesToggle) {
+        if (!chart || !mainSeries) {
             if (mainSeries && typeof mainSeries.setMarkers === 'function') {
                 try { mainSeries.setMarkers([]); } catch { }
             }
@@ -404,7 +406,10 @@ useEffect(() => {
                     evidenceItems = res?.evidences || [];
                 }
 
-                if (!evidenceItems.length) {
+                // Filtrar apenas evidências prospectivas reais (excluir testes/fixtures)
+                const liveItems = evidenceItems.filter((ev) => !ev.is_test && ev.source !== 'TEST');
+
+                if (!liveItems.length) {
                     if (mainSeries && typeof mainSeries.setMarkers === 'function') {
                         try { mainSeries.setMarkers([]); } catch { }
                     }
@@ -421,67 +426,74 @@ useEffect(() => {
                     return isNaN(d.getTime()) ? 0 : Math.floor(d.getTime() / 1000);
                 };
 
-                const markers = [];
-                const newSeriesList = [];
+                const markersMap = new Map();
 
-                evidenceItems.forEach((evItem) => {
-                    const p1_time = evItem.pivot_1_time || evItem.metadata?.pivot_1_time;
-                    const p2_time = evItem.pivot_2_time || evItem.metadata?.pivot_2_time;
-                    const p1_rsi = evItem.pivot_1_rsi ?? evItem.metadata?.pivot_1_rsi;
-                    const p2_rsi = evItem.pivot_2_rsi ?? evItem.metadata?.pivot_2_rsi;
+                liveItems.forEach((evItem) => {
+                    const refTimeStr =
+                        evItem.activation_time ||
+                        evItem.confluence_time ||
+                        evItem.pivot_2_time ||
+                        evItem.detected_at ||
+                        evItem.metadata?.pivot_2_time;
 
-                    const isBull = evItem.direction === 'BULLISH';
-                    const color = isBull ? '#21d68d' : '#ff5f72';
+                    let tRef = parseTs(refTimeStr);
 
-                    let t1 = parseTs(p1_time);
-                    let t2 = parseTs(p2_time);
-
-                    if (candles.length > 0) {
-                        const findClosest = (ts) => {
-                            let closest = candles[0].time;
-                            let minDiff = Math.abs(closest - ts);
-                            for (let i = 1; i < candles.length; i++) {
-                                const diff = Math.abs(candles[i].time - ts);
-                                if (diff < minDiff) { minDiff = diff; closest = candles[i].time; }
+                    if (candles.length > 0 && tRef > 0) {
+                        let closest = candles[0].time;
+                        let minDiff = Math.abs(closest - tRef);
+                        for (let i = 1; i < candles.length; i++) {
+                            const diff = Math.abs(candles[i].time - tRef);
+                            if (diff < minDiff) {
+                                minDiff = diff;
+                                closest = candles[i].time;
                             }
-                            return closest;
-                        };
-                        if (t1 > 0) t1 = findClosest(t1);
-                        if (t2 > 0) t2 = findClosest(t2);
+                        }
+                        tRef = closest;
                     }
 
-                    if (t1 > 0 && t2 > 0 && t1 < t2 && p1_rsi != null && p2_rsi != null) {
-                        const hdfRLine = chart.addSeries(LineSeries, {
-                            color,
-                            lineWidth: 3,
-                            priceLineVisible: false,
-                            lastValueVisible: false,
-                        }, 1);
+                    if (tRef > 0) {
+                        const isBull = evItem.direction === 'BULLISH';
+                        const isActivated =
+                            evItem.variant_stage === 'HDF_DVP' ||
+                            evItem.current_state === 'ACTIVATED' ||
+                            evItem.status_code === 'ACTIVATED' ||
+                            evItem.activated === true;
+                        const isArmed =
+                            evItem.armed === true ||
+                            evItem.current_state === 'ARMED' ||
+                            evItem.status_code === 'ARMED';
 
-                        hdfRLine.setData([
-                            { time: t1, value: p1_rsi },
-                            { time: t2, value: p2_rsi },
-                        ]);
+                        const color = isBull
+                            ? (isActivated ? '#21d68d' : '#72f2b8')
+                            : (isActivated ? '#ff5f72' : '#ff9f43');
 
-                        newSeriesList.push(hdfRLine);
+                        const text = isActivated ? 'HDF' : (isArmed ? 'ARMED' : 'HDF');
 
-                        markers.push({
-                            time: t2,
+                        markersMap.set(tRef, {
+                            time: tRef,
                             position: isBull ? 'belowBar' : 'aboveBar',
                             color,
                             shape: isBull ? 'arrowUp' : 'arrowDown',
-                            text: `HDF ${evItem.variant_stage || 'D'}`,
+                            text,
                         });
                     }
                 });
 
-                divergenceSeriesRef.current = newSeriesList;
+                const sortedMarkers = Array.from(markersMap.values())
+                    .sort((a, b) => a.time - b.time)
+                    .slice(-10);
 
                 if (mainSeries && typeof mainSeries.setMarkers === 'function') {
-                    try { mainSeries.setMarkers(markers.sort((a, b) => a.time - b.time)); } catch { }
+                    try { mainSeries.setMarkers(sortedMarkers); } catch { }
+                }
+
+                if (activeEvidenceData && sortedMarkers.length > 0 && chart.timeScale) {
+                    try {
+                        chart.timeScale().scrollToPosition(0, true);
+                    } catch {}
                 }
             } catch (err) {
-                console.error('Erro ao renderizar evidências visuais HDF:', err);
+                console.error('Erro ao renderizar marcadores visuais HDF:', err);
             }
         }
 
@@ -490,7 +502,7 @@ useEffect(() => {
         return () => {
             isMounted = false;
         };
-    }, [activeEvidenceData, symbol, timeframe, showRSI, showDivergencesToggle, loading]);
+    }, [activeEvidenceData, symbol, timeframe, showRSI, loading]);
 
     // Atualização dinâmica dos indicadores do usuário (Fase 3C)
     useEffect(() => {

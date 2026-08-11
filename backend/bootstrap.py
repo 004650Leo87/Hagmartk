@@ -85,7 +85,7 @@ def start_system(system: Dict) -> None:
         from backend.services.shadow_scanner import ShadowScannerManager
         scanner = system.get("shadow_scanner") or ShadowScannerManager()
         system["shadow_scanner"] = scanner
-        scanner.start_auto_scheduler(adapter=market_engine.adapter, interval_seconds=10.0)
+        scanner.start_auto_scheduler(adapter=market_engine.adapter, interval_seconds=3.0)
     except Exception as error:
         logger.error("Failed to start system: %s", error)
         raise

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import HdfActivityMeter from './HdfActivityMeter';
 
 export default function BottomStatusBar({
   mt5Connected,
@@ -102,6 +103,10 @@ export default function BottomStatusBar({
           <div className="hk-status-item-compact info">
             <span>SHADOW: {operationalCount}/{totalCount}</span>
           </div>
+
+          <div className="hk-statusbar-sep">│</div>
+
+          <HdfActivityMeter />
 
           <div className="hk-statusbar-sep">│</div>
 

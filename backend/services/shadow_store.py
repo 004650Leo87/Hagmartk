@@ -111,9 +111,26 @@ class ShadowStoreRepository:
                 last_processed_candle TEXT,
                 last_scan_at TEXT,
                 scanner_status TEXT,
-                error_message TEXT
+                error_message TEXT,
+                scan_cycle_count_total INTEGER DEFAULT 0,
+                evaluation_count_total INTEGER DEFAULT 0,
+                last_evaluated_candle_time TEXT DEFAULT '',
+                last_evaluation_at TEXT DEFAULT '',
+                last_result_stage TEXT DEFAULT 'NONE'
             )
             """)
+
+            for col, col_type in [
+                ("scan_cycle_count_total", "INTEGER DEFAULT 0"),
+                ("evaluation_count_total", "INTEGER DEFAULT 0"),
+                ("last_evaluated_candle_time", "TEXT DEFAULT ''"),
+                ("last_evaluation_at", "TEXT DEFAULT ''"),
+                ("last_result_stage", "TEXT DEFAULT 'NONE'"),
+            ]:
+                try:
+                    cursor.execute(f"ALTER TABLE shadow_scanner_state ADD COLUMN {col} {col_type}")
+                except Exception:
+                    pass
 
             # Tabela shadow_session para persistência de shadow_started_at
             cursor.execute("""
@@ -426,12 +443,16 @@ class ShadowStoreRepository:
             cursor.execute(
                 """
             INSERT OR REPLACE INTO shadow_scanner_state (
-                key, candidate_id, symbol, timeframe, enabled, last_processed_candle, last_scan_at, scanner_status, error_message
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                key, candidate_id, symbol, timeframe, enabled, last_processed_candle, last_scan_at,
+                scanner_status, error_message, scan_cycle_count_total, evaluation_count_total,
+                last_evaluated_candle_time, last_evaluation_at, last_result_stage
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                     key, state.candidate_id, state.symbol, state.timeframe, 1 if state.enabled else 0,
                     state.last_processed_candle, state.last_scan_at, state.scanner_status, state.error_message,
+                    state.scan_cycle_count_total, state.evaluation_count_total,
+                    state.last_evaluated_candle_time, state.last_evaluation_at, state.last_result_stage,
                 ),
             )
             conn.commit()
@@ -446,9 +467,147 @@ class ShadowStoreRepository:
                 return ShadowScannerState(
                     candidate_id=r["candidate_id"], symbol=r["symbol"], timeframe=r["timeframe"],
                     enabled=bool(r["enabled"]), last_processed_candle=r["last_processed_candle"],
-                    last_scan_at=r["last_scan_at"], scanner_status=r["scanner_status"], error_message=r["error_message"],
+                    last_scan_at=r["last_scan_at"], scanner_status=r["scanner_status"], error_message=r["error_message"] or "",
+                    scan_cycle_count_total=r["scan_cycle_count_total"] if "scan_cycle_count_total" in r.keys() and r["scan_cycle_count_total"] is not None else 0,
+                    evaluation_count_total=r["evaluation_count_total"] if "evaluation_count_total" in r.keys() and r["evaluation_count_total"] is not None else 0,
+                    last_evaluated_candle_time=r["last_evaluated_candle_time"] if "last_evaluated_candle_time" in r.keys() and r["last_evaluated_candle_time"] is not None else "",
+                    last_evaluation_at=r["last_evaluation_at"] if "last_evaluation_at" in r.keys() and r["last_evaluation_at"] is not None else "",
+                    last_result_stage=r["last_result_stage"] if "last_result_stage" in r.keys() and r["last_result_stage"] is not None else "NONE",
                 )
             return None
+
+    def get_shadow_heartbeat(self, candidate_id: str = "hdf_dvp_exit_2r") -> Dict[str, Any]:
+        """Retorna telemetria e diagnósticos de execução autônoma do Shadow Scanner em tempo real."""
+        from backend.services.shadow_scanner import SHADOW_ASSETS, SHADOW_TIMEFRAMES, get_asset_class
+        from backend.core.time_utils import now_utc_datetime, now_utc_str, parse_utc_timestamp
+
+        now_dt = now_utc_datetime()
+        now_str = now_utc_str()
+
+        STALE_THRESHOLD_SECONDS = {
+            "M15": 2700,    # 45 minutos
+            "H1": 10800,    # 3 horas
+            "H4": 43200,    # 12 horas
+        }
+
+        funnel = self.get_funnel_telemetry()
+
+        scanners_list = []
+        tot_cycles = 0
+        tot_evaluations = 0
+        running_cnt = 0
+        waiting_cnt = 0
+        stale_cnt = 0
+        error_cnt = 0
+
+        for sym in SHADOW_ASSETS:
+            for tf in SHADOW_TIMEFRAMES:
+                st = self.get_scanner_state(candidate_id, sym, tf)
+                scan_cycles = st.scan_cycle_count_total if st else 0
+                evaluations = st.evaluation_count_total if st else 0
+                status_val = st.scanner_status if st else "RUNNING"
+                last_closed = st.last_processed_candle if st else ""
+                last_eval_candle = st.last_evaluated_candle_time if st else last_closed
+                last_eval_at = st.last_evaluation_at if st else (st.last_scan_at if st else "")
+                last_stage = st.last_result_stage if st else "NONE"
+                err_msg = st.error_message if st else None
+
+                tot_cycles += scan_cycles
+                tot_evaluations += evaluations
+
+                last_dt = parse_utc_timestamp(last_eval_at)
+                age_seconds = int((now_dt - last_dt).total_seconds()) if last_dt is not None else 999999
+                max_stale_sec = STALE_THRESHOLD_SECONDS.get(tf.upper(), 2700)
+
+                is_stale = age_seconds > max_stale_sec if last_dt is not None else False
+
+                if status_val == "ERROR":
+                    error_cnt += 1
+                elif is_stale:
+                    stale_cnt += 1
+                elif status_val == "WAITING_NEW_CANDLE":
+                    waiting_cnt += 1
+                else:
+                    running_cnt += 1
+
+                scanners_list.append({
+                    "symbol": sym,
+                    "asset_class": get_asset_class(sym),
+                    "timeframe": tf,
+                    "status": status_val,
+                    "last_closed_candle": last_closed,
+                    "last_evaluated_candle": last_eval_candle,
+                    "last_evaluation_at": last_eval_at,
+                    "evaluation_count_total": evaluations,
+                    "scan_cycle_count_total": scan_cycles,
+                    "last_result_stage": last_stage,
+                    "scan_age_seconds": age_seconds,
+                    "is_stale": is_stale,
+                    "last_error": err_msg,
+                })
+
+        # Buscar lista detalhada dos candidatos REAIS para a experiência de hover
+        candidate_items = []
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT evidence_id, symbol, timeframe, direction, variant_stage, volume_pass, pattern_pass, pattern_type, relative_volume, detected_at, created_at "
+                "FROM shadow_hdf_evidence "
+                "WHERE candidate_created = 1 AND is_test = 0 "
+                "ORDER BY created_at DESC LIMIT 20"
+            )
+            c_rows = cursor.fetchall()
+            for r in c_rows:
+                confluences = ["Divergência HDF_D"]
+                if r["volume_pass"]:
+                    vol_val = round(float(r["relative_volume"] or 0.0), 2)
+                    confluences.append(f"Volume ({vol_val}x)" if vol_val > 0 else "Volume")
+                if r["pattern_pass"]:
+                    pat_name = r["pattern_type"] if r["pattern_type"] and r["pattern_type"] != "NONE" else "Padrão"
+                    confluences.append(f"Padrão ({pat_name})")
+
+                pending = []
+                if not r["volume_pass"]:
+                    pending.append("Filtro de Volume")
+                if not r["pattern_pass"]:
+                    pending.append("Padrão de Reversão")
+
+                candidate_items.append({
+                    "evidence_id": r["evidence_id"],
+                    "symbol": r["symbol"],
+                    "timeframe": r["timeframe"],
+                    "direction": r["direction"],
+                    "stage": r["variant_stage"] or "CANDIDATO",
+                    "confluences": confluences,
+                    "pending": pending,
+                    "updated_at": r["created_at"] or r["detected_at"],
+                })
+
+        return {
+            "generated_at": now_str,
+            "registered": len(scanners_list),
+            "running": running_cnt,
+            "waiting_new_candle": waiting_cnt,
+            "stale": stale_cnt,
+            "errors": error_cnt,
+            "totals": {
+                "scan_cycles": tot_cycles,
+                "evaluations": tot_evaluations,
+                "pivots": funnel.get("pivots", 0),
+                "hdf_d": funnel.get("hdf_d", 0),
+                "hdf_dv": funnel.get("hdf_dv", 0),
+                "hdf_dp": funnel.get("hdf_dp", 0),
+                "hdf_dvp": funnel.get("hdf_dvp", 0),
+                "candidates": len(candidate_items),
+                "candidate_items": candidate_items,
+                "armed": funnel.get("armed", 0),
+                "activated": funnel.get("activated", 0),
+                "expired": funnel.get("expired", 0),
+                "stopped": funnel.get("stopped", 0),
+                "target_2r": funnel.get("target_2r", 0),
+            },
+            "scanners": scanners_list,
+        }
 
     def get_shadow_statistics(self, started_at: str = "") -> ShadowStatistics:
         """Calcula estatísticas prospectivas estritas do Shadow Mode (começando do zero)."""

@@ -167,7 +167,7 @@ export default function AlertCenterDrawer({
 
                   <div className="hk-alert-bottom">
                     <span className="hk-alert-action" style={{ fontSize: '11px', color: 'var(--hk-accent-cyan)' }}>
-                      {isSelected ? '✓ EXIBINDO LINHA NO RSI' : 'Visualizar no Gráfico (P1 → P2) →'}
+                      {isSelected ? '✓ EM EXIBIÇÃO NO GRÁFICO' : 'Focar no Gráfico (Marcador HDF) →'}
                     </span>
                   </div>
                 </div>

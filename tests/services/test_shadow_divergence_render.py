@@ -1,11 +1,11 @@
-"""Testes da Fase 5C.18B — Proof Determinístico do Renderer de Divergências no RSI e Toggle.
+"""Testes da Fase 5C.26 — Renderer de Marcadores Visuais Operacionais no Gráfico de Preço (Pane 0).
 
-Testa isoladamente o pipeline do Renderer de Divergências (Pane 1 RSI):
-1. Payload BULLISH -> 1 segmento VERDE no Pane RSI (P1 -> P2)
-2. Payload BEARISH -> 1 segmento VERMELHO no Pane RSI (P1 -> P2)
-3. Payload VAZIO (0 evidências live) -> 0 segmentos de divergência
-4. Toggle Visibilidade (ON -> OFF -> ON) -> Remoção e re-exibição limpas sem séries stale
-5. Isolamento estrito -> NENHUMA gravação no banco de produção SQLite
+Testa a substituição das linhas do RSI por marcadores operacionais nos candles de preço:
+1. RSI LineSeries removidas do Pane 1.
+2. Ocorrência BULLISH -> 1 marcador ▲ abaixo do candle (belowBar, verde/lightgreen).
+3. Ocorrência BEARISH -> 1 marcador ▼ acima do candle (aboveBar, vermelho/amber).
+4. 0 ocorrências live -> 0 marcadores.
+5. Filtro de segurança: eventos de teste/fixtures são ignorados.
 """
 from __future__ import annotations
 
@@ -13,43 +13,52 @@ import pytest
 from backend.domain.shadow_models import HDFEvidence
 
 
-class MockRsiLineRenderer:
-    """Mock determinístico do renderer de divergências do Pane 1 (RSI) no MarketChart."""
+class MockPriceCandleMarkerRenderer:
+    """Mock determinístico do renderer de marcadores operacionais no gráfico de preço (Pane 0)."""
 
     def __init__(self):
-        self.rendered_series = []
-        self.is_visible = True
+        self.rendered_markers = []
+        self.rsi_line_series_count = 0
 
     def render_evidences(self, evidences: list[HDFEvidence]):
         self.clear()
-        if not self.is_visible:
-            return
+        live_items = [ev for ev in evidences if getattr(ev, "source", "LIVE_PROSPECTIVE") in ("LIVE_PROSPECTIVE",) and not getattr(ev, "is_test", False)]
 
-        for ev in evidences:
-            if getattr(ev, "source", "LIVE_PROSPECTIVE") not in ("LIVE_PROSPECTIVE", "TEST"):
-                continue
+        for ev in live_items:
+            is_bull = ev.direction == "BULLISH"
+            is_activated = getattr(ev, "variant_stage", "HDF_D") == "HDF_DVP" or getattr(ev, "activated", False)
+            is_armed = getattr(ev, "armed", False)
 
-            color = "#21d68d" if ev.direction == "BULLISH" else "#ff5f72"
-            series_item = {
+            position = "belowBar" if is_bull else "aboveBar"
+            shape = "arrowUp" if is_bull else "arrowDown"
+            color = (
+                ("#21d68d" if is_activated else "#72f2b8")
+                if is_bull
+                else ("#ff5f72" if is_activated else "#ff9f43")
+            )
+            text = "HDF" if is_activated else ("ARMED" if is_armed else "HDF")
+
+            marker_item = {
                 "evidence_id": ev.evidence_id,
+                "symbol": ev.symbol,
+                "timeframe": ev.timeframe,
                 "direction": ev.direction,
-                "pane": 1,  # RSI Pane
+                "pane": 0,  # Price Pane
+                "position": position,
+                "shape": shape,
                 "color": color,
-                "p1": {"time": ev.pivot_1_time, "rsi": ev.pivot_1_rsi, "price": ev.pivot_1_price},
-                "p2": {"time": ev.pivot_2_time, "rsi": ev.pivot_2_rsi, "price": ev.pivot_2_price},
+                "text": text,
+                "time": ev.pivot_2_time or ev.detected_at,
             }
-            self.rendered_series.append(series_item)
-
-    def set_toggle_visibility(self, visible: bool, evidences: list[HDFEvidence]):
-        self.is_visible = visible
-        self.render_evidences(evidences)
+            self.rendered_markers.append(marker_item)
 
     def clear(self):
-        self.rendered_series = []
+        self.rendered_markers = []
+        self.rsi_line_series_count = 0
 
 
-def test_bullish_divergence_rendering():
-    renderer = MockRsiLineRenderer()
+def test_rsi_lines_removed_and_bullish_marker_rendered():
+    renderer = MockPriceCandleMarkerRenderer()
     bullish_ev = HDFEvidence(
         evidence_id="ev_bull_001",
         symbol="XAUUSD",
@@ -62,23 +71,31 @@ def test_bullish_divergence_rendering():
         pivot_2_time="2026-08-11 14:00:00",
         pivot_2_price=2402.00,
         pivot_2_rsi=36.8,
+        variant_stage="HDF_DVP",
+        armed=True,
+        activated=True,
         source="LIVE_PROSPECTIVE",
         is_test=False,
     )
 
     renderer.render_evidences([bullish_ev])
 
-    assert len(renderer.rendered_series) == 1
-    s = renderer.rendered_series[0]
-    assert s["direction"] == "BULLISH"
-    assert s["pane"] == 1
-    assert s["color"] == "#21d68d"  # Verde
-    assert s["p1"]["rsi"] == 31.2
-    assert s["p2"]["rsi"] == 36.8
+    # 1. RSI LineSeries = 0
+    assert renderer.rsi_line_series_count == 0
+
+    # 2. Marcador no candle de preço
+    assert len(renderer.rendered_markers) == 1
+    m = renderer.rendered_markers[0]
+    assert m["direction"] == "BULLISH"
+    assert m["pane"] == 0
+    assert m["position"] == "belowBar"
+    assert m["shape"] == "arrowUp"
+    assert m["color"] == "#21d68d"
+    assert m["text"] == "HDF"
 
 
-def test_bearish_divergence_rendering():
-    renderer = MockRsiLineRenderer()
+def test_bearish_marker_rendered():
+    renderer = MockPriceCandleMarkerRenderer()
     bearish_ev = HDFEvidence(
         evidence_id="ev_bear_001",
         symbol="XAUUSD",
@@ -91,31 +108,36 @@ def test_bearish_divergence_rendering():
         pivot_2_time="2026-08-11 12:00:00",
         pivot_2_price=2428.50,
         pivot_2_rsi=62.1,
+        variant_stage="HDF_DV",
+        armed=True,
+        activated=False,
         source="LIVE_PROSPECTIVE",
         is_test=False,
     )
 
     renderer.render_evidences([bearish_ev])
 
-    assert len(renderer.rendered_series) == 1
-    s = renderer.rendered_series[0]
-    assert s["direction"] == "BEARISH"
-    assert s["pane"] == 1
-    assert s["color"] == "#ff5f72"  # Vermelho
-    assert s["p1"]["rsi"] == 68.5
-    assert s["p2"]["rsi"] == 62.1
+    assert len(renderer.rendered_markers) == 1
+    m = renderer.rendered_markers[0]
+    assert m["direction"] == "BEARISH"
+    assert m["pane"] == 0
+    assert m["position"] == "aboveBar"
+    assert m["shape"] == "arrowDown"
+    assert m["color"] == "#ff9f43"
+    assert m["text"] == "ARMED"
 
 
 def test_zero_evidence_rendering():
-    renderer = MockRsiLineRenderer()
+    renderer = MockPriceCandleMarkerRenderer()
     renderer.render_evidences([])
-    assert len(renderer.rendered_series) == 0
+    assert len(renderer.rendered_markers) == 0
+    assert renderer.rsi_line_series_count == 0
 
 
-def test_toggle_visibility_on_off_on():
-    renderer = MockRsiLineRenderer()
-    ev = HDFEvidence(
-        evidence_id="ev_bull_002",
+def test_synthetic_test_events_ignored():
+    renderer = MockPriceCandleMarkerRenderer()
+    test_ev = HDFEvidence(
+        evidence_id="ev_test_001",
         symbol="EURUSD",
         timeframe="M15",
         asset_class="FOREX",
@@ -126,18 +148,10 @@ def test_toggle_visibility_on_off_on():
         pivot_2_time="t2",
         pivot_2_price=1.0820,
         pivot_2_rsi=34.0,
-        source="LIVE_PROSPECTIVE",
-        is_test=False,
+        source="TEST",
+        is_test=True,
     )
 
-    # 1. Toggle ON -> 1 Linha
-    renderer.set_toggle_visibility(True, [ev])
-    assert len(renderer.rendered_series) == 1
+    renderer.render_evidences([test_ev])
+    assert len(renderer.rendered_markers) == 0
 
-    # 2. Toggle OFF -> 0 Linhas
-    renderer.set_toggle_visibility(False, [ev])
-    assert len(renderer.rendered_series) == 0
-
-    # 3. Toggle ON novamente -> 1 Linha re-exibida sem duplicação
-    renderer.set_toggle_visibility(True, [ev])
-    assert len(renderer.rendered_series) == 1

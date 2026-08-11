@@ -437,25 +437,17 @@ def get_shadow_statistics() -> Dict[str, Any]:
     }
 
 
+@router.get("/heartbeat")
+def get_shadow_heartbeat() -> Dict[str, Any]:
+    """Retorna o relatório completo de heartbeat, telemetria e estado operacional das 39 combinações (READ-ONLY)."""
+    return _store.get_shadow_heartbeat(candidate_id=HDF_ROBUST_CANDIDATE_V1.candidate_id)
+
+
 @router.get("/scanners")
 def get_scanner_state_list() -> List[Dict[str, Any]]:
-    """Retorna o estado de execução do scanner prospectivo para as 39 combinações de mercado."""
-    res = []
-    for sym in SHADOW_ASSETS:
-        for tf in SHADOW_TIMEFRAMES:
-            st = _store.get_scanner_state(HDF_ROBUST_CANDIDATE_V1.candidate_id, sym, tf)
-            res.append(
-                {
-                    "symbol": sym,
-                    "timeframe": tf,
-                    "enabled": st.enabled if st else True,
-                    "status": st.scanner_status if st else "RUNNING",
-                    "last_processed_candle": st.last_processed_candle if st else "",
-                    "last_scan_at": st.last_scan_at if st else "",
-                    "error_message": st.error_message if st else "",
-                }
-            )
-    return res
+    """Retorna o estado de execução e telemetria do scanner prospectivo para as 39 combinações de mercado."""
+    hb = _store.get_shadow_heartbeat(candidate_id=HDF_ROBUST_CANDIDATE_V1.candidate_id)
+    return hb.get("scanners", [])
 
 
 # NOTE: /events/recent foi movido para ANTES de /events/{event_id} (ver acima) para evitar conflito de rotas FastAPI.

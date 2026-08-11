@@ -16,7 +16,7 @@ Design notes:
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from .market_adapter import MarketAdapter
 from backend.core.constants import categorize_symbol
@@ -151,6 +151,21 @@ class MT5MarketAdapter(MarketAdapter):
 
         return info
 
+    def _get_broker_utc_offset_seconds(self) -> int:
+        """Calcula o offset em segundos entre o relógio do servidor do broker MT5 e o UTC real.
+        Garante que timestamps de candles e cotações sejam convertidos para UTC real sem distorção.
+        """
+        try:
+            mt5 = self._load_mt5()
+            tick = mt5.symbol_info_tick("XAUUSD") or mt5.symbol_info_tick("EURUSD")
+            if tick and getattr(tick, "time", 0) > 0:
+                now_utc_ts = datetime.now(timezone.utc).timestamp()
+                diff_hours = round((tick.time - now_utc_ts) / 3600.0)
+                return int(diff_hours * 3600)
+        except Exception:
+            pass
+        return 3 * 3600
+
     def get_quote(self, symbol: str) -> Dict[str, Any]:
         mt5 = self._load_mt5()
 
@@ -184,7 +199,13 @@ class MT5MarketAdapter(MarketAdapter):
         if point > 0:
             spread_points = (ask - bid) / point
 
-        tick_time = datetime.fromtimestamp(getattr(tick, "time", 0), tz=timezone.utc).isoformat()
+        offset_sec = self._get_broker_utc_offset_seconds()
+        raw_tick_time = getattr(tick, "time", 0)
+        tick_time = (
+            (datetime.fromtimestamp(raw_tick_time, tz=timezone.utc) - timedelta(seconds=offset_sec)).isoformat()
+            if raw_tick_time > 0
+            else datetime.now(timezone.utc).isoformat()
+        )
 
         return {
             "symbol": symbol,
@@ -221,6 +242,20 @@ class MT5MarketAdapter(MarketAdapter):
         mt5 = self._load_mt5()
 
         symbol = symbol.upper().strip()
+
+        if isinstance(timeframe, str):
+            tf_map = {
+                "M1": getattr(mt5, "TIMEFRAME_M1", 1),
+                "M5": getattr(mt5, "TIMEFRAME_M5", 5),
+                "M15": getattr(mt5, "TIMEFRAME_M15", 15),
+                "M30": getattr(mt5, "TIMEFRAME_M30", 30),
+                "H1": getattr(mt5, "TIMEFRAME_H1", 16385),
+                "H4": getattr(mt5, "TIMEFRAME_H4", 16388),
+                "D1": getattr(mt5, "TIMEFRAME_D1", 16408),
+                "W1": getattr(mt5, "TIMEFRAME_W1", 32769),
+                "MN1": getattr(mt5, "TIMEFRAME_MN1", 49153),
+            }
+            timeframe = tf_map.get(timeframe.upper().strip(), 15)
 
         info = mt5.symbol_info(symbol)
         if info is None:
@@ -264,10 +299,12 @@ class MT5MarketAdapter(MarketAdapter):
             except Exception:
                 return getattr(obj, key, None)
 
+        offset_sec = self._get_broker_utc_offset_seconds()
+
         for r in rates:
             time_val = _get_field(r, "time")
             timestamp = (
-                datetime.fromtimestamp(time_val, tz=timezone.utc).isoformat()
+                (datetime.fromtimestamp(time_val, tz=timezone.utc) - timedelta(seconds=offset_sec)).isoformat()
                 if time_val is not None
                 else None
             )

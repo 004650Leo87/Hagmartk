@@ -62,7 +62,7 @@ def _startup_system():
     app.state.system = system
     app.state.started_at = None
 
-    autostart = os.environ.get("HAGMARTK_AUTOSTART", "0") == "1"
+    autostart = os.environ.get("HAGMARTK_AUTOSTART", "1") == "1"
     if autostart:
         start_system(system)
         app.state.started_at = datetime.now(timezone.utc)
