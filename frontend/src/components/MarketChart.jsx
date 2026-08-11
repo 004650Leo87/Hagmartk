@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { LineSeries } from 'lightweight-charts';
-import { getCandles, getDivergences, getIndicators } from '../services/api';
-import { calculateEMA, calculateRSI } from '../indicators/calculations';
+import { getCandles, getDivergences, getHDFEvidences, getIndicators } from '../services/api';
+import { calculateEMA, calculateRSI, detectRegularRsiDivergences } from '../indicators/calculations';
 
 import {
     createPriceScaleWheelHandler,
@@ -41,10 +41,12 @@ function MarketChart({
     onToggleIndicatorVisibility = null,
     onRemoveIndicator = null,
     onOpenIndicatorSettings = null,
-    showRSI = false,
+    showRSI = true,
+    onToggleRSI = null,
     showEMA50 = false,
     showEMA200 = false,
     showDivergences = false,
+    theme = 'black-piano',
     activeEvidenceEventId = null,
     activeEvidenceData = null,
     onClearEvidence = null,
@@ -62,6 +64,7 @@ function MarketChart({
     const [selectedDivergence, setSelectedDivergence] = useState(null);
     const [legendCollapsedPrice, setLegendCollapsedPrice] = useState(false);
     const [legendCollapsedRSI, setLegendCollapsedRSI] = useState(false);
+    const [showDivergencesToggle, setShowDivergencesToggle] = useState(true);
 
     const overlayIndicators = (userIndicators || []).filter((i) => i.type === 'ema');
     const oscillatorIndicators = (userIndicators || []).filter((i) => i.type === 'rsi');
@@ -169,23 +172,21 @@ function MarketChart({
 
         saveCurrentViewRef.current = saveCurrentView;
 
-                const {
+        const {
             handlePointerDown: navigationPointerDown,
             handlePointerMove: navigationPointerMove,
             finishVerticalDrag: navigationFinishVerticalDrag,
         } = createVerticalNavigation({
             container,
-            priceScale,
-            series,
+            chart,
             saveCurrentView,
         });
 
-        const handlePriceScaleWheel =
-            createPriceScaleWheelHandler({
-                container,
-                priceScale,
-                saveCurrentView,
-            });
+        const handlePriceScaleWheel = createPriceScaleWheelHandler({
+            container,
+            chart,
+            saveCurrentView,
+        });
 
         const chartEvents = [
             {
@@ -279,47 +280,51 @@ function MarketChart({
                     handleRangeChange,
                 );
 
-            chart.remove();
+        chart.remove();
 
-            chartRef.current = null;
-            seriesRef.current = null;
-            ema50SeriesRef.current = null;
-            ema200SeriesRef.current = null;
-            rsiSeriesRef.current = null;
-            saveCurrentViewRef.current = null;
-        };
-    }, []);
+        chartRef.current = null;
+        seriesRef.current = null;
+        ema50SeriesRef.current = null;
+        ema200SeriesRef.current = null;
+        rsiSeriesRef.current = null;
+        saveCurrentViewRef.current = null;
+    };
+}, []);
 
-    useEffect(() => {
-        const chart = chartRef.current;
-        if (!chart) return;
+/* Efeito para alternância dinâmica do tema no gráfico */
+useEffect(() => {
+    if (!chartRef.current) return;
+    const isLight = theme === 'flight-deck-light' || theme === 'light';
+    try {
+        chartRef.current.applyOptions({
+            layout: {
+                background: {
+                    type: ColorType.Solid,
+                    color: isLight ? '#ffffff' : '#050a11',
+                },
+                textColor: isLight ? '#334155' : '#8194b2',
+            },
+            grid: {
+                vertLines: {
+                    color: isLight ? 'rgba(203, 213, 225, 0.6)' : 'rgba(116, 137, 168, 0.08)',
+                },
+                horzLines: {
+                    color: isLight ? 'rgba(203, 213, 225, 0.6)' : 'rgba(116, 137, 168, 0.08)',
+                },
+            },
+            rightPriceScale: {
+                borderColor: isLight ? '#cbd5e1' : 'rgba(116, 137, 168, 0.18)',
+            },
+            timeScale: {
+                borderColor: isLight ? '#cbd5e1' : 'rgba(116, 137, 168, 0.18)',
+            },
+        });
+    } catch (e) {
+        console.error('[THEME UPDATE] Erro ao aplicar opções de tema no gráfico:', e);
+    }
+}, [theme]);
 
-        if (showRSI) {
-            chart.priceScale('rsi_scale').applyOptions({
-                visible: true,
-                scaleMargins: { top: 0.75, bottom: 0.03 },
-            });
-            chart.priceScale('right').applyOptions({
-                scaleMargins: { top: 0.05, bottom: 0.30 },
-            });
-        } else {
-            chart.priceScale('rsi_scale').applyOptions({
-                visible: false,
-            });
-            chart.priceScale('right').applyOptions({
-                scaleMargins: { top: 0.08, bottom: 0.08 },
-            });
-            rsiSeriesRef.current?.setData([]);
-        }
 
-        if (!showEMA50) {
-            ema50SeriesRef.current?.setData([]);
-        }
-
-        if (!showEMA200) {
-            ema200SeriesRef.current?.setData([]);
-        }
-    }, [showRSI, showEMA50, showEMA200]);
 
     useEffect(() => {
         let active = true;
@@ -350,158 +355,125 @@ function MarketChart({
         };
     }, [showDivergences, symbol, timeframe]);
 
-
-    // Evidence Mode: renderiza marcadores (P1, P2, CONFIRMED, ENTRY), segmento P1-P2 e segmento RSI R1-R2 do evento selecionado
+    // HDF-Governed RSI Divergence Visual Engine (Fase 5C.13):
+    // A linha visual de divergência no RSI SOMENTE pode existir quando houver um EVENTO HDF VÁLIDO.
+    // Sem evento HDF ativo/selecionado -> ZERO LINHAS (RSI permanece 100% limpo).
     useEffect(() => {
+        let isMounted = true;
         const chart = chartRef.current;
         const mainSeries = seriesRef.current;
 
-        // Limpar linhas anteriores de evidence mode
+        // Cleanup de séries anteriores de evidência
         divergenceSeriesRef.current.forEach((s) => {
             try { chart?.removeSeries(s); } catch { }
         });
         divergenceSeriesRef.current = [];
 
-        if (!activeEvidenceEventId || !activeEvidenceData || !chart || !mainSeries) return;
-
-        const parseTs = (tStr) => {
-            if (!tStr) return 0;
-            const d = new Date(tStr);
-            return Math.floor(d.getTime() / 1000);
-        };
-
-        const isBull = activeEvidenceData.direction === 'BULLISH';
-        const color = isBull ? '#21d68d' : '#ff5f72';
-
-        const t1 = parseTs(activeEvidenceData.pivot_1_time);
-        const t2 = parseTs(activeEvidenceData.pivot_2_time);
-        const tConfirmed = parseTs(activeEvidenceData.confluence_time || activeEvidenceData.divergence_confirmed_at);
-        const tActivated = parseTs(activeEvidenceData.activated_at);
-
-        const newSeriesList = [];
-        const markers = [];
-
-        // 1. Event Markers no gráfico de preço
-        if (t1 > 0) {
-            markers.push({
-                time: t1,
-                position: isBull ? 'belowBar' : 'aboveBar',
-                color,
-                shape: 'square',
-                text: 'P1',
-            });
-        }
-        if (t2 > 0) {
-            markers.push({
-                time: t2,
-                position: isBull ? 'belowBar' : 'aboveBar',
-                color,
-                shape: 'square',
-                text: 'P2',
-            });
-        }
-        if (tConfirmed > 0 && tConfirmed !== t1 && tConfirmed !== t2) {
-            markers.push({
-                time: tConfirmed,
-                position: isBull ? 'belowBar' : 'aboveBar',
-                color,
-                shape: isBull ? 'arrowUp' : 'arrowDown',
-                text: 'HDF CONFIRMED',
-            });
-        } else if (tConfirmed > 0) {
-            markers.push({
-                time: tConfirmed,
-                position: isBull ? 'belowBar' : 'aboveBar',
-                color,
-                shape: isBull ? 'arrowUp' : 'arrowDown',
-                text: 'HDF CONFIRMED',
-            });
-        }
-
-        if (tActivated > 0) {
-            markers.push({
-                time: tActivated,
-                position: isBull ? 'belowBar' : 'aboveBar',
-                color: '#00e5ff',
-                shape: 'circle',
-                text: 'ENTRY',
-            });
-        }
-
-        // Ordenar markers por time ascendente
-        const sortedMarkers = markers
-            .filter((m) => m.time > 0)
-            .sort((a, b) => a.time - b.time);
-
-        try {
-            if (typeof mainSeries.setMarkers === 'function') {
-                mainSeries.setMarkers(sortedMarkers);
-            }
-        } catch (err) {
-            console.error('[HDF EVIDENCE] Erro ao aplicar markers:', err);
-        }
-
-        // 2. Segmento de Preço P1 -> P2 (PRICE DIVERGENCE SEGMENT)
-        if (t1 > 0 && t2 > 0) {
-            const pLine = chart.addSeries(LineSeries, {
-                color,
-                lineWidth: 2,
-                priceLineVisible: false,
-                lastValueVisible: false,
-            });
-            pLine.setData([
-                { time: t1, value: activeEvidenceData.pivot_1_price },
-                { time: t2, value: activeEvidenceData.pivot_2_price },
-            ]);
-            newSeriesList.push(pLine);
-
-            // 3. Segmento de RSI R1 -> R2 (RSI DIVERGENCE EVIDENCE)
-            if (showRSI && activeEvidenceData.pivot_1_rsi && activeEvidenceData.pivot_2_rsi) {
-                const rLine = chart.addSeries(LineSeries, {
-                    color,
-                    lineWidth: 2,
-                    priceLineVisible: false,
-                    lastValueVisible: false,
-                });
-                rLine.setData([
-                    { time: t1, value: activeEvidenceData.pivot_1_rsi },
-                    { time: t2, value: activeEvidenceData.pivot_2_rsi },
-                ]);
-                if (typeof rLine.moveToPane === 'function') {
-                    try {
-                        rLine.moveToPane(1);
-                        const panes = chart.panes();
-                        if (panes.length > 1) {
-                            panes[0].setStretchFactor(0.78);
-                            panes[1].setStretchFactor(0.22);
-                        }
-                    } catch { }
-                }
-                newSeriesList.push(rLine);
-            }
-        }
-
-        divergenceSeriesRef.current = newSeriesList;
-
-        // 4. Viewport Auto-Centering (Event Navigation)
-        const centerTs = tConfirmed > 0 ? tConfirmed : (t2 > 0 ? t2 : t1);
-        if (centerTs > 0) {
-            const rangeFrom = (t1 > 0 ? Math.min(t1, centerTs) : centerTs) - 3600 * 12;
-            const rangeTo = centerTs + 3600 * 24;
-            try {
-                chart.timeScale().setVisibleRange({ from: rangeFrom, to: rangeTo });
-            } catch { }
-        }
-
-        return () => {
-            newSeriesList.forEach((s) => {
-                try { chart?.removeSeries(s); } catch { }
-            });
+        if (!chart || !mainSeries || !showDivergencesToggle) {
             if (mainSeries && typeof mainSeries.setMarkers === 'function') {
                 try { mainSeries.setMarkers([]); } catch { }
             }
+            return undefined;
+        }
+
+        async function renderBackendEvidences() {
+            try {
+                let evidenceItems = [];
+                if (activeEvidenceData) {
+                    evidenceItems = [activeEvidenceData];
+                } else {
+                    const res = await getHDFEvidences(symbol, timeframe);
+                    if (!isMounted) return;
+                    evidenceItems = res?.evidences || [];
+                }
+
+                if (!evidenceItems.length) {
+                    if (mainSeries && typeof mainSeries.setMarkers === 'function') {
+                        try { mainSeries.setMarkers([]); } catch { }
+                    }
+                    return;
+                }
+
+                const candles = candlesRef.current || [];
+                const parseTs = (tStr) => {
+                    if (!tStr) return 0;
+                    if (typeof tStr === 'number') return tStr;
+                    let s = String(tStr).trim().replace(' ', 'T');
+                    if (!s.endsWith('Z') && !/[+-]\d{2}:\d{2}$/.test(s)) s += 'Z';
+                    const d = new Date(s);
+                    return isNaN(d.getTime()) ? 0 : Math.floor(d.getTime() / 1000);
+                };
+
+                const markers = [];
+                const newSeriesList = [];
+
+                evidenceItems.forEach((evItem) => {
+                    const p1_time = evItem.pivot_1_time || evItem.metadata?.pivot_1_time;
+                    const p2_time = evItem.pivot_2_time || evItem.metadata?.pivot_2_time;
+                    const p1_rsi = evItem.pivot_1_rsi ?? evItem.metadata?.pivot_1_rsi;
+                    const p2_rsi = evItem.pivot_2_rsi ?? evItem.metadata?.pivot_2_rsi;
+
+                    const isBull = evItem.direction === 'BULLISH';
+                    const color = isBull ? '#21d68d' : '#ff5f72';
+
+                    let t1 = parseTs(p1_time);
+                    let t2 = parseTs(p2_time);
+
+                    if (candles.length > 0) {
+                        const findClosest = (ts) => {
+                            let closest = candles[0].time;
+                            let minDiff = Math.abs(closest - ts);
+                            for (let i = 1; i < candles.length; i++) {
+                                const diff = Math.abs(candles[i].time - ts);
+                                if (diff < minDiff) { minDiff = diff; closest = candles[i].time; }
+                            }
+                            return closest;
+                        };
+                        if (t1 > 0) t1 = findClosest(t1);
+                        if (t2 > 0) t2 = findClosest(t2);
+                    }
+
+                    if (t1 > 0 && t2 > 0 && t1 < t2 && p1_rsi != null && p2_rsi != null) {
+                        const hdfRLine = chart.addSeries(LineSeries, {
+                            color,
+                            lineWidth: 3,
+                            priceLineVisible: false,
+                            lastValueVisible: false,
+                        }, 1);
+
+                        hdfRLine.setData([
+                            { time: t1, value: p1_rsi },
+                            { time: t2, value: p2_rsi },
+                        ]);
+
+                        newSeriesList.push(hdfRLine);
+
+                        markers.push({
+                            time: t2,
+                            position: isBull ? 'belowBar' : 'aboveBar',
+                            color,
+                            shape: isBull ? 'arrowUp' : 'arrowDown',
+                            text: `HDF ${evItem.variant_stage || 'D'}`,
+                        });
+                    }
+                });
+
+                divergenceSeriesRef.current = newSeriesList;
+
+                if (mainSeries && typeof mainSeries.setMarkers === 'function') {
+                    try { mainSeries.setMarkers(markers.sort((a, b) => a.time - b.time)); } catch { }
+                }
+            } catch (err) {
+                console.error('Erro ao renderizar evidências visuais HDF:', err);
+            }
+        }
+
+        renderBackendEvidences();
+
+        return () => {
+            isMounted = false;
         };
-    }, [activeEvidenceEventId, activeEvidenceData, showRSI]);
+    }, [activeEvidenceData, symbol, timeframe, showRSI, showDivergencesToggle, loading]);
 
     // Atualização dinâmica dos indicadores do usuário (Fase 3C)
     useEffect(() => {
@@ -537,26 +509,17 @@ function MarketChart({
                     lastValueVisible: true,
                     title,
                 };
-                const s = chart.addSeries(LineSeries, options);
+                // User indicator RSI: adicionar no pane 1 nativo via paneIndex
+                const paneIndex = ind.type === 'rsi' ? 1 : 0;
+                const s = chart.addSeries(LineSeries, options, paneIndex);
                 s.setData(data);
 
                 if (ind.type === 'rsi') {
-                    // Mover para o Pane 1 nativo no Lightweight Charts 5.2.0
-                    if (typeof s.moveToPane === 'function') {
-                        try {
-                            s.moveToPane(1);
-                            const panes = chart.panes();
-                            if (panes.length > 1) {
-                                panes[0].setStretchFactor(0.78);
-                                panes[1].setStretchFactor(0.22);
-                            }
-                        } catch { }
-                    }
-                    // Adicionar níveis 70, 50, 30 de sobrecompra/equilíbrio/sobrevenda
+                    // Adicionar níveis 70, 50, 30 discretos sem badges coloridos
                     try {
-                        s.createPriceLine({ price: 70, color: '#ff5f72', lineWidth: 1, lineStyle: 2, title: '70' });
-                        s.createPriceLine({ price: 50, color: '#64748b', lineWidth: 1, lineStyle: 2, title: '50' });
-                        s.createPriceLine({ price: 30, color: '#21d68d', lineWidth: 1, lineStyle: 2, title: '30' });
+                        s.createPriceLine({ price: 70, color: 'rgba(244,63,94,0.35)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false });
+                        s.createPriceLine({ price: 50, color: 'rgba(148,163,184,0.25)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false });
+                        s.createPriceLine({ price: 30, color: 'rgba(16,185,129,0.35)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false });
                     } catch { }
                 }
 
@@ -574,18 +537,55 @@ function MarketChart({
             }
         }
 
-        // 3. Ajustar pane nativo do RSI
-        const hasVisibleRSI = (userIndicators || []).some((i) => i.type === 'rsi' && i.visible) || showRSI || !!activeEvidenceEventId;
-        if (!hasVisibleRSI && typeof chart.removePane === 'function') {
+        // 3. Cálculo e renderização do RSI 14 no PANE 1 nativo (Criação/Recolhimento dinâmico sem alteração de viewport)
+        const savedLogicalRange = chart.timeScale().getVisibleLogicalRange();
+
+        if (!showRSI) {
+            if (rsiSeriesRef.current) {
+                try {
+                    chart.removeSeries(rsiSeriesRef.current);
+                } catch { }
+                rsiSeriesRef.current = null;
+            }
+            if (divergenceSeriesRef.current && divergenceSeriesRef.current.length > 0) {
+                divergenceSeriesRef.current.forEach((s) => {
+                    try { chart.removeSeries(s); } catch { }
+                });
+                divergenceSeriesRef.current = [];
+            }
+        } else {
+            if (!rsiSeriesRef.current) {
+                try {
+                    const newRsi = chart.addSeries(LineSeries, {
+                        color: '#38bdf8',
+                        lineWidth: 2,
+                        priceLineVisible: false,
+                        lastValueVisible: true,
+                    }, 1);
+                    newRsi.createPriceLine({ price: 70, color: 'rgba(244, 63, 94, 0.35)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false });
+                    newRsi.createPriceLine({ price: 50, color: 'rgba(148, 163, 184, 0.25)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false });
+                    newRsi.createPriceLine({ price: 30, color: 'rgba(16, 185, 129, 0.35)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false });
+                    rsiSeriesRef.current = newRsi;
+
+                    const panes = chart.panes();
+                    if (panes.length > 1) {
+                        panes[0].setStretchFactor(3);
+                        panes[1].setStretchFactor(1);
+                    }
+                } catch { }
+            }
+            if (rsiSeriesRef.current && candles.length > 0) {
+                const rsiData = calculateRSI(candles, 14);
+                rsiSeriesRef.current.setData(rsiData);
+            }
+        }
+
+        if (savedLogicalRange) {
             try {
-                const panes = chart.panes();
-                if (panes.length > 1) {
-                    chart.removePane(1);
-                    if (panes[0]) panes[0].setStretchFactor(1.0);
-                }
+                chart.timeScale().setVisibleLogicalRange(savedLogicalRange);
             } catch { }
         }
-    }, [userIndicators, symbol, timeframe, showRSI, activeEvidenceEventId, loading]);
+    }, [userIndicators, symbol, timeframe, showRSI, activeEvidenceData, showDivergencesToggle, loading]);
 
 
     /*
@@ -812,9 +812,6 @@ function MarketChart({
         symbol,
         timeframe,
         refreshInterval,
-        showRSI,
-        showEMA50,
-        showEMA200,
     ]);
 
 
@@ -1073,6 +1070,22 @@ function MarketChart({
                             ))}
                         </div>
                     )}
+                </div>
+            )}
+
+            {/* Control de visibilidade de Divergências HDF */}
+            {showRSI && activeEvidenceData && (
+                <div style={{ position: 'absolute', bottom: '60px', left: '16px', zIndex: 10 }}>
+                    <button
+                        type="button"
+                        className={`hk-toggle-btn ${showDivergencesToggle ? 'on' : 'off'}`}
+                        style={{ padding: '4px 10px', fontSize: '11px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}
+                        onClick={() => setShowDivergencesToggle((prev) => !prev)}
+                        title="Alternar visibilidade dos segmentos de divergência HDF no gráfico e no RSI"
+                    >
+                        <span>Divergências</span>
+                        <span>{showDivergencesToggle ? '👁' : '🙈'}</span>
+                    </button>
                 </div>
             )}
 

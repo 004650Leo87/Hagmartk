@@ -7,20 +7,38 @@ export function normalizeCandle(candle) {
     const high = Number(candle.high);
     const low = Number(candle.low);
     const close = Number(candle.close);
-    const timestamp = new Date(candle.time).getTime();
+
+    let timeVal = candle.time;
+    let timestamp = 0;
+
+    if (typeof timeVal === 'number') {
+        timestamp = timeVal > 1e11 ? Math.floor(timeVal / 1000) : Math.floor(timeVal);
+    } else if (typeof timeVal === 'string') {
+        const isoStr = timeVal.includes(' ') ? timeVal.replace(' ', 'T') : timeVal;
+        const parsed = new Date(isoStr).getTime();
+        if (Number.isFinite(parsed)) {
+            timestamp = Math.floor(parsed / 1000);
+        } else {
+            const num = Number(timeVal);
+            if (Number.isFinite(num)) {
+                timestamp = num > 1e11 ? Math.floor(num / 1000) : Math.floor(num);
+            }
+        }
+    }
 
     if (
         !Number.isFinite(open) ||
         !Number.isFinite(high) ||
         !Number.isFinite(low) ||
         !Number.isFinite(close) ||
-        !Number.isFinite(timestamp)
+        !timestamp ||
+        timestamp <= 0
     ) {
         return null;
     }
 
     return {
-        time: Math.floor(timestamp / 1000),
+        time: timestamp,
         open,
         high,
         low,

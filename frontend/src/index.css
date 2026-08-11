@@ -1,111 +1,139 @@
-:root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --social-bg: rgba(244, 243, 236, 0.5);
-  --shadow:
-    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+/* ==========================================================================
+   HAGMARTK GLASS COCKPIT DESIGN SYSTEM & THEME TOKENS V2
+   ========================================================================== */
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
-  font: 18px/145% var(--sans);
-  letter-spacing: 0.18px;
-  color-scheme: light dark;
-  color: var(--text);
-  background: var(--bg);
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
+/* Default Theme: Black Piano (Deep Charcoal Black - Exact Match to Mockup) */
+:root, [data-theme="black-piano"] {
+  --hk-bg-root: #080C12;
+  --hk-bg-surface: #0E131F;
+  --hk-bg-surface-elevated: #161D2E;
+  --hk-bg-hover: #1F283E;
+  --hk-bg-active: #27344E;
+  
+  --hk-border-subdued: #182030;
+  --hk-border-base: #243048;
+  --hk-border-focus: #38BDF8;
+
+  --hk-text-primary: #F0F4F8;
+  --hk-text-secondary: #94A3B8;
+  --hk-text-muted: #64748B;
+  --hk-text-inverse: #0F172A;
+
+  --hk-accent: #38BDF8; /* Electric Cyan */
+  --hk-accent-glow: rgba(56, 189, 248, 0.15);
+  
+  --hk-positive: #10B981; /* Bullish Emerald */
+  --hk-positive-glow: rgba(16, 185, 129, 0.15);
+  
+  --hk-negative: #F43F5E; /* Bearish Crimson */
+  --hk-negative-glow: rgba(244, 63, 94, 0.15);
+  
+  --hk-warning: #F59E0B; /* Amber */
+  --hk-warning-glow: rgba(245, 158, 11, 0.15);
+  
+  --hk-info: #6366F1; /* Indigo */
+  --hk-info-glow: rgba(99, 102, 241, 0.15);
+
+  --hk-font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --hk-font-mono: 'JetBrains Mono', ui-monospace, Consolas, monospace;
+
+  --hk-topbar-height: 48px;
+  --hk-nav-width-collapsed: 60px;
+  --hk-nav-width-expanded: 220px;
+  --hk-statusbar-height: 28px;
+  --hk-context-width: 360px;
+
+  --hk-radius-sm: 4px;
+  --hk-radius-md: 6px;
+  --hk-radius-lg: 8px;
+  --hk-radius-xl: 12px;
+
+  --hk-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --hk-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --hk-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
+}
+
+/* Light Theme: Flight Deck Light */
+[data-theme="flight-deck-light"], [data-theme="light"], .light, .flight-deck-light {
+  --hk-bg-root: #E2E8F0;
+  --hk-bg-surface: #F1F5F9;
+  --hk-bg-surface-elevated: #FFFFFF;
+  --hk-bg-hover: #E2E8F0;
+  --hk-bg-active: #CBD5E1;
+  
+  --hk-border-subdued: #CBD5E1;
+  --hk-border-base: #94A3B8;
+  --hk-border-focus: #0284C7;
+
+  --hk-text-primary: #0F172A;
+  --hk-text-secondary: #334155;
+  --hk-text-muted: #64748B;
+  --hk-text-inverse: #F8FAFC;
+
+  --hk-accent: #0284C7;
+  --hk-accent-glow: rgba(2, 132, 199, 0.12);
+  
+  --hk-positive: #059669;
+  --hk-positive-glow: rgba(5, 150, 105, 0.12);
+  
+  --hk-negative: #E11D48;
+  --hk-negative-glow: rgba(225, 29, 72, 0.12);
+  
+  --hk-warning: #D97706;
+  --hk-warning-glow: rgba(217, 119, 6, 0.12);
+  
+  --hk-info: #4F46E5;
+  --hk-info-glow: rgba(79, 70, 229, 0.12);
+
+  --hk-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --hk-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --hk-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+/* Global Reset */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background-color: var(--hk-bg-root);
+  color: var(--hk-text-primary);
+  font-family: var(--hk-font-sans);
+  font-size: 13px;
+  line-height: 1.4;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-
-  @media (max-width: 1024px) {
-    font-size: 16px;
-  }
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --social-bg: rgba(47, 48, 58, 0.5);
-    --shadow:
-      rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
-  }
-
-  #social .button-icon {
-    filter: invert(1) brightness(2);
-  }
-}
-
-body {
-  margin: 0;
 }
 
 #root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
+  width: 100vw;
+  height: 100vh;
   display: flex;
   flex-direction: column;
-  box-sizing: border-box;
+  overflow: hidden;
 }
 
-h1,
-h2 {
-  font-family: var(--heading);
-  font-weight: 500;
-  color: var(--text-h);
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
 }
 
-h1 {
-  font-size: 56px;
-  letter-spacing: -1.68px;
-  margin: 32px 0;
-  @media (max-width: 1024px) {
-    font-size: 36px;
-    margin: 20px 0;
-  }
-}
-h2 {
-  font-size: 24px;
-  line-height: 118%;
-  letter-spacing: -0.24px;
-  margin: 0 0 8px;
-  @media (max-width: 1024px) {
-    font-size: 20px;
-  }
-}
-p {
-  margin: 0;
+::-webkit-scrollbar-track {
+  background: var(--hk-bg-root);
 }
 
-code,
-.counter {
-  font-family: var(--mono);
-  display: inline-flex;
-  border-radius: 4px;
-  color: var(--text-h);
+::-webkit-scrollbar-thumb {
+  background: var(--hk-border-base);
+  border-radius: var(--hk-radius-sm);
 }
 
-code {
-  font-size: 15px;
-  line-height: 135%;
-  padding: 4px 8px;
-  background: var(--code-bg);
+::-webkit-scrollbar-thumb:hover {
+  background: var(--hk-text-muted);
 }

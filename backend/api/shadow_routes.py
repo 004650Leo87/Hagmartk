@@ -60,6 +60,139 @@ def get_shadow_evidence(candidate_id: str = Query("hdf_dvp_exit_2r")) -> Dict[st
     return evidence_obj.to_dict()
 
 
+@router.get("/evidence/recent")
+def list_recent_hdf_evidences(
+    symbol: Optional[str] = Query(None),
+    timeframe: Optional[str] = Query(None),
+    include_non_live: bool = Query(False),
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+) -> Dict[str, Any]:
+    """Retorna as HDFEvidences matemáticas confirmadas (READ-ONLY). Retorna apenas LIVE_PROSPECTIVE por padrão."""
+    evidences = _store.list_hdf_evidence(
+        symbol=symbol,
+        timeframe=timeframe,
+        source="LIVE_PROSPECTIVE",
+        is_test=False,
+        include_non_live=include_non_live,
+        limit=limit,
+        offset=offset,
+    )
+    return {
+        "symbol": symbol or "ALL",
+        "timeframe": timeframe or "ALL",
+        "include_non_live": include_non_live,
+        "total": len(evidences),
+        "evidences": [ev.__dict__ for ev in evidences],
+    }
+
+
+@router.get("/evidence/by-symbol/{symbol}")
+def list_hdf_evidences_by_symbol(
+    symbol: str,
+    timeframe: Optional[str] = Query(None),
+    include_non_live: bool = Query(False),
+    limit: int = Query(50, ge=1, le=200),
+) -> Dict[str, Any]:
+    """Retorna as HDFEvidences LIVE_PROSPECTIVE para renderização visual no gráfico (READ-ONLY)."""
+    symbol = symbol.strip().upper()
+    evidences = _store.list_hdf_evidence(
+        symbol=symbol,
+        timeframe=timeframe,
+        source="LIVE_PROSPECTIVE",
+        is_test=False,
+        include_non_live=include_non_live,
+        limit=limit,
+        offset=0,
+    )
+    return {
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "include_non_live": include_non_live,
+        "evidences": [ev.__dict__ for ev in evidences],
+    }
+
+
+@router.get("/evidence/detail/{evidence_id}")
+def get_hdf_evidence_by_id(evidence_id: str) -> Dict[str, Any]:
+    """Retorna os detalhes cirúrgicos de uma HDFEvidence específica (READ-ONLY)."""
+    ev = _store.get_hdf_evidence(evidence_id)
+    if not ev:
+        raise HTTPException(status_code=404, detail=f"Evidência HDF '{evidence_id}' não encontrada.")
+    return ev.__dict__
+
+
+@router.get("/funnel")
+def get_hdf_funnel_telemetry(
+    symbol: Optional[str] = Query(None),
+    timeframe: Optional[str] = Query(None),
+) -> Dict[str, Any]:
+    """Retorna métricas determinísticas e reais do funil HDF (Pivôs, D, DV, DP, DVP, Candidate, Armed, Activated)."""
+    return _store.get_funnel_telemetry(symbol=symbol, timeframe=timeframe)
+
+
+@router.get("/coverage")
+def get_hdf_scanner_coverage() -> Dict[str, Any]:
+    """Retorna a cobertura operacional de escaneamento do universo 39/39 com auditoria de XAUUSD."""
+    from backend.services.shadow_scanner import SHADOW_ASSETS, SHADOW_TIMEFRAMES
+    from backend.core.time_utils import now_utc_str, parse_utc_timestamp
+    
+    combinations = []
+    xauusd_coverage = {}
+    active_count = 0
+    recent_count = 0
+    stale_count = 0
+    error_count = 0
+    now_dt = parse_utc_timestamp(now_utc_str())
+
+    for sym in SHADOW_ASSETS:
+        for tf in SHADOW_TIMEFRAMES:
+            st = _store.get_scanner_state(HDF_ROBUST_CANDIDATE_V1.candidate_id, sym, tf)
+            status_val = st.scanner_status if st else "RUNNING"
+            last_scan = st.last_scan_at if st else ""
+            
+            is_active = status_val in ("RUNNING", "WAITING_NEW_CANDLE")
+            if is_active:
+                active_count += 1
+            if status_val == "ERROR":
+                error_count += 1
+
+            is_recent = False
+            if last_scan and now_dt:
+                dt_scan = parse_utc_timestamp(last_scan)
+                if dt_scan and (now_dt - dt_scan).total_seconds() < 900:  # 15 min
+                    is_recent = True
+                    recent_count += 1
+                else:
+                    stale_count += 1
+            else:
+                stale_count += 1
+
+            item = {
+                "symbol": sym,
+                "timeframe": tf,
+                "enabled": st.enabled if st else True,
+                "status": status_val,
+                "last_processed_candle": st.last_processed_candle if st else "",
+                "last_scan_at": last_scan,
+                "is_recent": is_recent,
+                "error_message": st.error_message if st else "",
+            }
+            combinations.append(item)
+            if sym == "XAUUSD":
+                xauusd_coverage[tf] = item
+
+    return {
+        "registered": len(combinations),
+        "active": active_count,
+        "recently_scanned": recent_count,
+        "stale": stale_count,
+        "errors": error_count,
+        "xauusd": xauusd_coverage,
+        "combinations": combinations,
+    }
+
+
 @router.get("/observation/health")
 def get_shadow_observation_health(candidate_id: str = Query("hdf_dvp_exit_2r")) -> Dict[str, Any]:
     """Retorna a saúde agregada da observação prospectiva (39 combinações, READ-ONLY)."""
@@ -219,10 +352,13 @@ def list_shadow_events(
 @router.get("/events/recent")
 def list_recent_shadow_events(
     n: int = Query(20, ge=1, le=100),
+    include_test: bool = Query(False),
     last_seen_id: Optional[str] = Query(None),
 ) -> Dict[str, Any]:
     """Retorna os N eventos mais recentes para polling do toast. Deve ficar ANTES de /events/{event_id}."""
     all_events = _store.list_history_events()
+    if not include_test:
+        all_events = [e for e in all_events if not e.event_id.startswith("test_") and not getattr(e, "is_test", False)]
     recent = all_events[:n]
     formatted = [InternalAlertEngine.format_market_alert(e) for e in recent]
     # Filtrar por toast-worthy states

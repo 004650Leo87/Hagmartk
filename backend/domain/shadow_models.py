@@ -41,6 +41,44 @@ class ShadowEventType(str, Enum):
 
 
 @dataclass
+class HDFEvidence:
+    evidence_id: str
+    symbol: str
+    timeframe: str
+    asset_class: str
+    direction: str  # BULLISH or BEARISH
+
+    pivot_1_time: str
+    pivot_1_price: float
+    pivot_1_rsi: float
+
+    pivot_2_time: str
+    pivot_2_price: float
+    pivot_2_rsi: float
+
+    divergence_confirmed: bool = True
+    relative_volume: float = 0.0
+    volume_pass: bool = False
+
+    pattern_type: str = "NONE"
+    pattern_pass: bool = False
+    pattern_policy: str = "SAME_BAR"
+
+    variant_stage: str = "HDF_D"  # HDF_D, HDF_DV, HDF_DP, HDF_DVP
+    candidate_created: bool = False
+    armed: bool = False
+    activated: bool = False
+
+    event_id: Optional[str] = None  # nullable link to shadow_events
+    reason_codes: List[str] = field(default_factory=list)
+
+    source: str = "LIVE_PROSPECTIVE"  # LIVE_PROSPECTIVE | HISTORICAL_BACKFILL | TEST | DEMO
+    is_test: bool = False  # False for live/shadow evidence, True for test fixtures
+    detected_at: str = ""
+    created_at: str = ""
+
+
+@dataclass
 class EvidencePayload:
     symbol: str
     timeframe: str

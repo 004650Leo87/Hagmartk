@@ -103,10 +103,21 @@ def get_timeframes():
         ) from error
 
 
+TIMEFRAME_MAP = {
+    "M1": 1,
+    "M5": 5,
+    "M15": 15,
+    "M30": 30,
+    "H1": 16385,
+    "H4": 16388,
+    "D1": 16408,
+}
+
+
 @router.get("/market/candles/{symbol}")
 def get_candles(
     symbol: str,
-    timeframe: int | None = None,
+    timeframe: str | int | None = None,
     bars: int = 300,
     offset: int = 0,
 ):
@@ -115,21 +126,27 @@ def get_candles(
 
     Parâmetros:
     - symbol: ativo solicitado;
-    - timeframe: código de período do MetaTrader;
+    - timeframe: código de período ou nome do timeframe (M15, H1, H4);
     - bars: quantidade de candles.
     """
     if bars < 1:
         raise HTTPException(status_code=400, detail="A quantidade de candles deve ser maior que zero.")
 
-    # Resolve default timeframe lazily to avoid importing MetaTrader5 at module import time
-    if timeframe is None:
+    # Converte string (ex: "H1") para o código numérico correspondente
+    if isinstance(timeframe, str):
+        if timeframe.isdigit():
+            timeframe = int(timeframe)
+        elif timeframe in TIMEFRAME_MAP:
+            timeframe = TIMEFRAME_MAP[timeframe]
+
+    # Resolve default timeframe lazily
+    if timeframe is None or not isinstance(timeframe, int):
         try:
             import MetaTrader5 as mt5
 
-            timeframe = mt5.TIMEFRAME_M5
+            timeframe = mt5.TIMEFRAME_H1
         except Exception:
-            # When running tests without MT5, default to zero (adapter/market_service should handle)
-            timeframe = 0
+            timeframe = 16385
 
     try:
         dataframe = market.candles(

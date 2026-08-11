@@ -116,6 +116,7 @@ export function createMarketChart(container) {
         },
     });
 
+    // ── PANE 0: Candlestick + EMA overlays ─────────────────────────────────
     const series = chart.addSeries(CandlestickSeries, {
         upColor: '#21d68d',
         downColor: '#ff5f72',
@@ -125,16 +126,15 @@ export function createMarketChart(container) {
         wickDownColor: '#ff5f72',
         priceLineVisible: true,
         lastValueVisible: true,
-    });
+    }, 0);
 
-    // Sub-séries para overlays e painel RSI
     const ema50Series = chart.addSeries(LineSeries, {
         color: '#ff9800',
         lineWidth: 2,
         priceLineVisible: false,
         lastValueVisible: true,
         title: 'EMA 50',
-    });
+    }, 0);
 
     const ema200Series = chart.addSeries(LineSeries, {
         color: '#9c27b0',
@@ -142,52 +142,63 @@ export function createMarketChart(container) {
         priceLineVisible: false,
         lastValueVisible: true,
         title: 'EMA 200',
-    });
+    }, 0);
 
+    // ── PANE 1: RSI — PANE VERDADEIRO e independente ───────────────────────
+    // paneIndex = 1 cria automaticamente o segundo pane com escala própria.
+    // NÃO usa priceScaleId overlay, NÃO usa scaleMargins para simular painel.
     const rsiSeries = chart.addSeries(LineSeries, {
-        color: '#29b6f6',
+        color: '#38bdf8',
         lineWidth: 2,
-        priceScaleId: 'rsi_scale',
         priceLineVisible: false,
         lastValueVisible: true,
-        title: 'RSI 14',
-    });
+    }, 1);
 
-    // Linhas de níveis do RSI (70, 50, 30)
+    // Linhas de referência RSI no PANE 1 (70 / 50 / 30)
+    // axisLabelVisible: false → sem badges coloridos no eixo
     rsiSeries.createPriceLine({
         price: 70,
-        color: 'rgba(255, 95, 114, 0.5)',
+        color: 'rgba(244, 63, 94, 0.35)',
         lineWidth: 1,
         lineStyle: LineStyle.Dashed,
-        axisLabelVisible: true,
-        title: '70',
+        axisLabelVisible: false,
     });
 
     rsiSeries.createPriceLine({
         price: 50,
-        color: 'rgba(129, 148, 178, 0.4)',
+        color: 'rgba(148, 163, 184, 0.25)',
         lineWidth: 1,
         lineStyle: LineStyle.Dashed,
-        axisLabelVisible: true,
-        title: '50',
+        axisLabelVisible: false,
     });
 
     rsiSeries.createPriceLine({
         price: 30,
-        color: 'rgba(33, 214, 141, 0.5)',
+        color: 'rgba(16, 185, 129, 0.35)',
         lineWidth: 1,
         lineStyle: LineStyle.Dashed,
-        axisLabelVisible: true,
-        title: '30',
+        axisLabelVisible: false,
     });
 
-    chart.priceScale('rsi_scale').applyOptions({
-        scaleMargins: {
-            top: 0.75,
-            bottom: 0.03,
-        },
-        visible: false,
-    });
+    // Configurar a price scale do PANE 1 (RSI) para ser visualmente idêntica
+    // à price scale do PANE 0, mas com range fixo 0–100.
+    try {
+        const panes = chart.panes();
+        if (panes.length > 1) {
+            // Pane 0 = price (75%), Pane 1 = RSI (25%)
+            panes[0].setStretchFactor(3);
+            panes[1].setStretchFactor(1);
+        }
+    } catch { }
+
+    // Escala RSI: mesma aparência da escala de preço (neutro, sem badges)
+    try {
+        chart.priceScale('right', 1).applyOptions({
+            borderColor: 'rgba(148, 163, 184, 0.15)',
+            autoScale: true,
+            textColor: '#94A3B8',
+        });
+    } catch { }
 
     return {
         chart,

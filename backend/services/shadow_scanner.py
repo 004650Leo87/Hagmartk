@@ -10,12 +10,14 @@ from backend.core.time_utils import format_utc_str, now_utc_datetime, now_utc_st
 from backend.domain.candidate import HDF_CANDIDATE_V1_PARAMETER_HASH, HDF_ROBUST_CANDIDATE_V1
 from backend.domain.shadow_models import (
     EvidencePayload,
+    HDFEvidence,
     ScannerStatus,
     ShadowEvent,
     ShadowEventType,
     ShadowScannerState,
     ShadowState,
 )
+from backend.strategies.hdf.models import ReversalPatternType
 from backend.services.alert_engine import InternalAlertEngine, InternalShadowPublisher
 from backend.services.shadow_store import ShadowStoreRepository
 from backend.strategies.hdf.strategy import HDFStrategy, PatternAssociationPolicy, VolumeObservationPolicy
@@ -228,6 +230,9 @@ class ShadowScannerManager:
         # Avalia a estratégia completa no conjunto de candles (warmup incluso)
         analysis = self.strategy.evaluate_full_dataset_analysis(df_closed, symbol, timeframe)
         occurrences = analysis.get("occurrences", [])
+
+        # Processa e persiste HDFEvidence para todas as divergências HDF_D (camada de evidência independente)
+        self._process_hdf_evidences(symbol, timeframe, df_closed, is_synthetic)
 
         generated_events: List[ShadowEvent] = []
 
@@ -533,3 +538,160 @@ class ShadowScannerManager:
     def _parse_event_time(self, time_str: str) -> Optional[datetime]:
         """Parseia string de tempo de evento para datetime UTC usando helper centralizado."""
         return parse_utc_timestamp(time_str)
+
+    def _process_hdf_evidences(
+        self,
+        symbol: str,
+        timeframe: str,
+        df_closed: pd.DataFrame,
+        is_synthetic: bool = False,
+    ) -> None:
+        """Extrai todas as divergências matematicamente confirmadas (HDF_D) e as registra como HDFEvidence."""
+        try:
+            if df_closed is None or len(df_closed) < self.strategy.minimum_required_bars:
+                return
+
+            rsi_series = self.strategy.rsi_indicator.calculate(df_closed)
+            df_calc = df_closed.copy()
+            df_calc["rsi"] = rsi_series
+
+            pivot_highs, pivot_lows = self.strategy.pivot_detector.find_pivots(df_calc)
+            n = len(df_calc)
+            asset_class = get_asset_class(symbol)
+            now_str = now_utc_str()
+
+            # Bullish check (fundos no preço, fundos no RSI)
+            for t in range(self.strategy.minimum_required_bars, n):
+                valid_lows = [p for p in pivot_lows if p.confirmed_at_index <= t]
+                if len(valid_lows) >= 2:
+                    p1, p2 = valid_lows[-2], valid_lows[-1]
+                    if p2.confirmed_at_index == t:
+                        is_bull, details = self.strategy.div_detector.check_bullish_divergence(p1, p2, rsi_series)
+                        if is_bull:
+                            vol_curr, vol_ma20, rel_vol, _ = self.strategy.vol_filter.evaluate_volume(df_calc, t)
+                            pattern_type, pat_details = self.strategy.pattern_detector.detect_at(df_calc, t)
+
+                            vol_pass = rel_vol >= self.strategy.volume_min_relative
+                            pat_pass = pattern_type in (ReversalPatternType.BULLISH_ENGULFING, ReversalPatternType.HAMMER)
+
+                            if vol_pass and pat_pass:
+                                stage = "HDF_DVP"
+                            elif vol_pass:
+                                stage = "HDF_DV"
+                            elif pat_pass:
+                                stage = "HDF_DP"
+                            else:
+                                stage = "HDF_D"
+
+                            p1_rsi = float(rsi_series.iloc[p1.index])
+                            p2_rsi = float(rsi_series.iloc[p2.index])
+
+                            t_clean = str(p2.time).replace(":", "").replace(" ", "_").replace("-", "")
+                            ev_id = f"ev_bull_{symbol}_{timeframe}_{t_clean}"
+                            pat_str = pattern_type.value if hasattr(pattern_type, "value") else str(pattern_type)
+                            source_val = "TEST" if is_synthetic else "LIVE_PROSPECTIVE"
+
+                            # Price integrity validation
+                            reasons = []
+                            p1_price_val = float(p1.price)
+                            p2_price_val = float(p2.price)
+                            if p1_price_val <= 0 or p2_price_val <= 0:
+                                reasons.append("PRICE_INTEGRITY_FAIL")
+
+                            ev = HDFEvidence(
+                                evidence_id=ev_id,
+                                symbol=symbol,
+                                timeframe=timeframe,
+                                asset_class=asset_class,
+                                direction="BULLISH",
+                                pivot_1_time=str(p1.time),
+                                pivot_1_price=p1_price_val,
+                                pivot_1_rsi=p1_rsi,
+                                pivot_2_time=str(p2.time),
+                                pivot_2_price=p2_price_val,
+                                pivot_2_rsi=p2_rsi,
+                                divergence_confirmed=True,
+                                relative_volume=float(rel_vol),
+                                volume_pass=vol_pass,
+                                pattern_type=pat_str,
+                                pattern_pass=pat_pass,
+                                pattern_policy="SAME_BAR",
+                                variant_stage=stage,
+                                candidate_created=stage == "HDF_DVP",
+                                armed=stage == "HDF_DVP",
+                                reason_codes=reasons,
+                                source=source_val,
+                                is_test=is_synthetic,
+                                detected_at=str(p2.confirmed_at_time),
+                                created_at=now_str,
+                            )
+                            self.store.save_hdf_evidence(ev)
+
+            # Bearish check (topos no preço, topos no RSI)
+            for t in range(self.strategy.minimum_required_bars, n):
+                valid_highs = [p for p in pivot_highs if p.confirmed_at_index <= t]
+                if len(valid_highs) >= 2:
+                    p1, p2 = valid_highs[-2], valid_highs[-1]
+                    if p2.confirmed_at_index == t:
+                        is_bear, details = self.strategy.div_detector.check_bearish_divergence(p1, p2, rsi_series)
+                        if is_bear:
+                            vol_curr, vol_ma20, rel_vol, _ = self.strategy.vol_filter.evaluate_volume(df_calc, t)
+                            pattern_type, pat_details = self.strategy.pattern_detector.detect_at(df_calc, t)
+
+                            vol_pass = rel_vol >= self.strategy.volume_min_relative
+                            pat_pass = pattern_type in (ReversalPatternType.BEARISH_ENGULFING, ReversalPatternType.SHOOTING_STAR)
+
+                            if vol_pass and pat_pass:
+                                stage = "HDF_DVP"
+                            elif vol_pass:
+                                stage = "HDF_DV"
+                            elif pat_pass:
+                                stage = "HDF_DP"
+                            else:
+                                stage = "HDF_D"
+
+                            p1_rsi = float(rsi_series.iloc[p1.index])
+                            p2_rsi = float(rsi_series.iloc[p2.index])
+
+                            t_clean = str(p2.time).replace(":", "").replace(" ", "_").replace("-", "")
+                            ev_id = f"ev_bear_{symbol}_{timeframe}_{t_clean}"
+                            pat_str = pattern_type.value if hasattr(pattern_type, "value") else str(pattern_type)
+                            source_val = "TEST" if is_synthetic else "LIVE_PROSPECTIVE"
+
+                            # Price integrity validation
+                            reasons = []
+                            p1_price_val = float(p1.price)
+                            p2_price_val = float(p2.price)
+                            if p1_price_val <= 0 or p2_price_val <= 0:
+                                reasons.append("PRICE_INTEGRITY_FAIL")
+
+                            ev = HDFEvidence(
+                                evidence_id=ev_id,
+                                symbol=symbol,
+                                timeframe=timeframe,
+                                asset_class=asset_class,
+                                direction="BEARISH",
+                                pivot_1_time=str(p1.time),
+                                pivot_1_price=p1_price_val,
+                                pivot_1_rsi=p1_rsi,
+                                pivot_2_time=str(p2.time),
+                                pivot_2_price=p2_price_val,
+                                pivot_2_rsi=p2_rsi,
+                                divergence_confirmed=True,
+                                relative_volume=float(rel_vol),
+                                volume_pass=vol_pass,
+                                pattern_type=pat_str,
+                                pattern_pass=pat_pass,
+                                pattern_policy="SAME_BAR",
+                                variant_stage=stage,
+                                candidate_created=stage == "HDF_DVP",
+                                armed=stage == "HDF_DVP",
+                                reason_codes=reasons,
+                                source=source_val,
+                                is_test=is_synthetic,
+                                detected_at=str(p2.confirmed_at_time),
+                                created_at=now_str,
+                            )
+                            self.store.save_hdf_evidence(ev)
+        except Exception as err:
+            _logger.warning("[SHADOW] Erro ao extrair HDFEvidence: %s", err)

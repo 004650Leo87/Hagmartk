@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 
 from backend.domain.shadow_models import (
+    HDFEvidence,
     ShadowEvent,
     ShadowScannerState,
     ShadowState,
@@ -187,6 +188,45 @@ class ShadowStoreRepository:
                 transitioned_at TEXT NOT NULL
             )
             """)
+
+            # Tabela shadow_hdf_evidence para armazenamento independente de evidências matemáticas HDF
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS shadow_hdf_evidence (
+                evidence_id TEXT PRIMARY KEY,
+                symbol TEXT NOT NULL,
+                timeframe TEXT NOT NULL,
+                asset_class TEXT NOT NULL,
+                direction TEXT NOT NULL,
+                pivot_1_time TEXT NOT NULL,
+                pivot_1_price REAL NOT NULL,
+                pivot_1_rsi REAL NOT NULL,
+                pivot_2_time TEXT NOT NULL,
+                pivot_2_price REAL NOT NULL,
+                pivot_2_rsi REAL NOT NULL,
+                divergence_confirmed INTEGER DEFAULT 1,
+                relative_volume REAL DEFAULT 0.0,
+                volume_pass INTEGER DEFAULT 0,
+                pattern_type TEXT DEFAULT 'NONE',
+                pattern_pass INTEGER DEFAULT 0,
+                pattern_policy TEXT DEFAULT 'SAME_BAR',
+                variant_stage TEXT DEFAULT 'HDF_D',
+                candidate_created INTEGER DEFAULT 0,
+                armed INTEGER DEFAULT 0,
+                activated INTEGER DEFAULT 0,
+                event_id TEXT,
+                reason_codes_json TEXT DEFAULT '[]',
+                source TEXT NOT NULL DEFAULT 'LIVE_PROSPECTIVE',
+                is_test INTEGER DEFAULT 0,
+                detected_at TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                UNIQUE(symbol, timeframe, pivot_2_time, direction)
+            )
+            """)
+
+            try:
+                cursor.execute("ALTER TABLE shadow_hdf_evidence ADD COLUMN source TEXT NOT NULL DEFAULT 'LIVE_PROSPECTIVE'")
+            except Exception:
+                pass
 
             conn.commit()
 
@@ -833,3 +873,193 @@ class ShadowStoreRepository:
                 }
                 for r in rows
             ]
+
+    def save_hdf_evidence(self, ev: HDFEvidence) -> bool:
+        """Persiste ou atualiza uma HDFEvidence na tabela shadow_hdf_evidence."""
+        from backend.core.time_utils import now_utc_str
+        now_str = now_utc_str()
+        reasons_json = json.dumps(ev.reason_codes or [])
+        source_val = getattr(ev, "source", "LIVE_PROSPECTIVE") or "LIVE_PROSPECTIVE"
+
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO shadow_hdf_evidence (
+                    evidence_id, symbol, timeframe, asset_class, direction,
+                    pivot_1_time, pivot_1_price, pivot_1_rsi,
+                    pivot_2_time, pivot_2_price, pivot_2_rsi,
+                    divergence_confirmed, relative_volume, volume_pass,
+                    pattern_type, pattern_pass, pattern_policy,
+                    variant_stage, candidate_created, armed, activated,
+                    event_id, reason_codes_json, source, is_test, detected_at, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(symbol, timeframe, pivot_2_time, direction) DO UPDATE SET
+                    relative_volume = excluded.relative_volume,
+                    volume_pass = excluded.volume_pass,
+                    pattern_type = excluded.pattern_type,
+                    pattern_pass = excluded.pattern_pass,
+                    variant_stage = excluded.variant_stage,
+                    candidate_created = excluded.candidate_created,
+                    armed = excluded.armed,
+                    activated = excluded.activated,
+                    event_id = excluded.event_id,
+                    reason_codes_json = excluded.reason_codes_json,
+                    source = excluded.source,
+                    is_test = excluded.is_test
+                """,
+                (
+                    ev.evidence_id, ev.symbol, ev.timeframe, ev.asset_class, ev.direction,
+                    ev.pivot_1_time, ev.pivot_1_price, ev.pivot_1_rsi,
+                    ev.pivot_2_time, ev.pivot_2_price, ev.pivot_2_rsi,
+                    1 if ev.divergence_confirmed else 0, ev.relative_volume, 1 if ev.volume_pass else 0,
+                    ev.pattern_type, 1 if ev.pattern_pass else 0, ev.pattern_policy,
+                    ev.variant_stage, 1 if ev.candidate_created else 0, 1 if ev.armed else 0, 1 if ev.activated else 0,
+                    ev.event_id, reasons_json, source_val, 1 if ev.is_test else 0,
+                    ev.detected_at or now_str, ev.created_at or now_str,
+                ),
+            )
+            conn.commit()
+            return True
+
+    def _row_to_evidence(self, r: sqlite3.Row) -> HDFEvidence:
+        source_val = r["source"] if "source" in r.keys() else "LIVE_PROSPECTIVE"
+        return HDFEvidence(
+            evidence_id=r["evidence_id"],
+            symbol=r["symbol"],
+            timeframe=r["timeframe"],
+            asset_class=r["asset_class"],
+            direction=r["direction"],
+            pivot_1_time=r["pivot_1_time"],
+            pivot_1_price=float(r["pivot_1_price"]),
+            pivot_1_rsi=float(r["pivot_1_rsi"]),
+            pivot_2_time=r["pivot_2_time"],
+            pivot_2_price=float(r["pivot_2_price"]),
+            pivot_2_rsi=float(r["pivot_2_rsi"]),
+            divergence_confirmed=bool(r["divergence_confirmed"]),
+            relative_volume=float(r["relative_volume"]),
+            volume_pass=bool(r["volume_pass"]),
+            pattern_type=r["pattern_type"],
+            pattern_pass=bool(r["pattern_pass"]),
+            pattern_policy=r["pattern_policy"],
+            variant_stage=r["variant_stage"],
+            candidate_created=bool(r["candidate_created"]),
+            armed=bool(r["armed"]),
+            activated=bool(r["activated"]),
+            event_id=r["event_id"],
+            reason_codes=json.loads(r["reason_codes_json"]) if r["reason_codes_json"] else [],
+            source=source_val,
+            is_test=bool(r["is_test"]),
+            detected_at=r["detected_at"],
+            created_at=r["created_at"],
+        )
+
+    def list_hdf_evidence(
+        self,
+        symbol: Optional[str] = None,
+        timeframe: Optional[str] = None,
+        source: Optional[str] = "LIVE_PROSPECTIVE",
+        is_test: bool = False,
+        include_non_live: bool = False,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> List[HDFEvidence]:
+        """Retorna a lista de HDFEvidence filtrada por proveniência e parâmetros."""
+        if include_non_live:
+            query = "SELECT * FROM shadow_hdf_evidence WHERE 1=1"
+            params: List[Any] = []
+        elif source:
+            query = "SELECT * FROM shadow_hdf_evidence WHERE source = ? AND is_test = ?"
+            params = [source, 1 if is_test else 0]
+        else:
+            query = "SELECT * FROM shadow_hdf_evidence WHERE is_test = ?"
+            params = [1 if is_test else 0]
+
+        if symbol:
+            query += " AND symbol = ?"
+            params.append(symbol)
+        if timeframe:
+            query += " AND timeframe = ?"
+            params.append(timeframe)
+
+        query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+        params.extend([limit, offset])
+
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            return [self._row_to_evidence(r) for r in rows]
+
+    def get_hdf_evidence(self, evidence_id: str) -> Optional[HDFEvidence]:
+        """Retorna uma HDFEvidence específica pelo evidence_id."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM shadow_hdf_evidence WHERE evidence_id = ?", (evidence_id,))
+            r = cursor.fetchone()
+            return self._row_to_evidence(r) if r else None
+
+    def get_funnel_telemetry(
+        self,
+        symbol: Optional[str] = None,
+        timeframe: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Métrica agregada e real do funil HDF calculada a partir dos dados do banco."""
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            
+            ev_where = "WHERE is_test = 0"
+            ev_params: List[Any] = []
+            evt_where = "WHERE 1=1"
+            evt_params: List[Any] = []
+
+            if symbol:
+                ev_where += " AND symbol = ?"
+                ev_params.append(symbol)
+                evt_where += " AND symbol = ?"
+                evt_params.append(symbol)
+            if timeframe:
+                ev_where += " AND timeframe = ?"
+                ev_params.append(timeframe)
+                evt_where += " AND timeframe = ?"
+                evt_params.append(timeframe)
+
+            cursor.execute(f"SELECT COUNT(*) FROM shadow_hdf_evidence {ev_where}", ev_params)
+            hdf_d = cursor.fetchone()[0]
+
+            cursor.execute(f"SELECT COUNT(*) FROM shadow_hdf_evidence {ev_where} AND volume_pass = 1", ev_params)
+            hdf_dv = cursor.fetchone()[0]
+
+            cursor.execute(f"SELECT COUNT(*) FROM shadow_hdf_evidence {ev_where} AND pattern_pass = 1", ev_params)
+            hdf_dp = cursor.fetchone()[0]
+
+            cursor.execute(f"SELECT COUNT(*) FROM shadow_hdf_evidence {ev_where} AND volume_pass = 1 AND pattern_pass = 1", ev_params)
+            hdf_dvp = cursor.fetchone()[0]
+
+            cursor.execute(f"SELECT COUNT(*) FROM shadow_hdf_evidence {ev_where} AND candidate_created = 1", ev_params)
+            candidates = cursor.fetchone()[0]
+
+            cursor.execute(f"SELECT COUNT(*) FROM shadow_events {evt_where} AND event_id NOT LIKE 'test_%'", evt_params)
+            real_events_count = cursor.fetchone()[0]
+
+            cursor.execute(f"SELECT current_state, COUNT(*) FROM shadow_events {evt_where} AND event_id NOT LIKE 'test_%' GROUP BY current_state", evt_params)
+            state_counts = dict(cursor.fetchall())
+
+            return {
+                "symbol": symbol or "ALL",
+                "timeframe": timeframe or "ALL",
+                "pivots": hdf_d * 2,
+                "hdf_d": hdf_d,
+                "hdf_dv": hdf_dv,
+                "hdf_dp": hdf_dp,
+                "hdf_dvp": hdf_dvp,
+                "candidates": candidates,
+                "armed": state_counts.get("ARMED", 0),
+                "activated": state_counts.get("ACTIVATED", 0),
+                "expired": state_counts.get("EXPIRED", 0),
+                "invalidated": state_counts.get("INVALIDATED_BEFORE_ACTIVATION", 0),
+                "target_2r": state_counts.get("TARGET_2R", 0),
+                "stopped": state_counts.get("STOPPED", 0),
+                "total_real_events": real_events_count,
+            }
+

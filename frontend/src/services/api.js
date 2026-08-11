@@ -47,6 +47,21 @@ export async function getQuote(symbol) {
   );
 }
 
+export async function getHDFEvidences(symbol, timeframe) {
+  const queryParams = new URLSearchParams();
+  if (timeframe) queryParams.append('timeframe', timeframe);
+  const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
+  return apiRequest(`/api/shadow/evidence/by-symbol/${encodeURIComponent(symbol)}${queryString}`);
+}
+
+export async function getHDFFunnel(symbol, timeframe) {
+  const queryParams = new URLSearchParams();
+  if (symbol) queryParams.append('symbol', symbol);
+  if (timeframe) queryParams.append('timeframe', timeframe);
+  const queryString = queryParams.toString() ? `?${queryParams.toString()}` : '';
+  return apiRequest(`/api/shadow/funnel${queryString}`);
+}
+
 export async function getQuotes() {
   return apiRequest('/market/quotes');
 }
