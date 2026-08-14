@@ -27,6 +27,30 @@ class AccountingBrokerBridge:
     def __getattr__(self, name):
         return getattr(self._broker, name)
 
+    @property
+    def bid(self) -> float:
+        return self._broker.bid
+
+    @bid.setter
+    def bid(self, value: float) -> None:
+        self._broker.bid = value
+
+    @property
+    def ask(self) -> float:
+        return self._broker.ask
+
+    @ask.setter
+    def ask(self, value: float) -> None:
+        self._broker.ask = value
+
+    @property
+    def spread_pts(self) -> int:
+        return self._broker.spread_pts
+
+    @spread_pts.setter
+    def spread_pts(self, value: int) -> None:
+        self._broker.spread_pts = value
+
     def _position_by_ticket(
         self,
         ticket: int,
@@ -184,11 +208,14 @@ class AccountingBrokerBridge:
 
         return True
 
-    def position_close(
+    def position_close_at(
         self,
         ticket: int,
+        exit_price: float,
+        kind: str = "FINAL_CLOSE",
         profit: float = 0.0,
     ) -> bool:
+        """Fecha no broker e contabiliza no preço de execução explícito."""
 
         position = self._position_by_ticket(ticket)
 
@@ -196,11 +223,6 @@ class AccountingBrokerBridge:
             return False
 
         self.ledger.register_position(position)
-
-        if position.type is PositionType.BUY:
-            exit_price = self._broker.bid
-        else:
-            exit_price = self._broker.ask
 
         ok = self._broker.position_close(
             ticket,
@@ -213,7 +235,48 @@ class AccountingBrokerBridge:
         self.ledger.record_final(
             ticket=ticket,
             exit_price=exit_price,
-            kind="FINAL_CLOSE",
+            kind=kind,
         )
 
         return True
+
+    def position_close(
+        self,
+        ticket: int,
+        profit: float = 0.0,
+    ) -> bool:
+
+        position = self._position_by_ticket(ticket)
+
+        if position is None:
+            return False
+
+        if position.type is PositionType.BUY:
+            exit_price = self._broker.bid
+        else:
+            exit_price = self._broker.ask
+
+        return self.position_close_at(
+            ticket=ticket,
+            exit_price=exit_price,
+            kind="FINAL_CLOSE",
+            profit=profit,
+        )
+
+    def close_all_by_magic(
+        self,
+        magic: int,
+    ) -> None:
+        """Preserva CloseAllOperations por magic e contabiliza saídas."""
+        tickets = [
+            position.ticket
+            for position in list(self._broker.positions)
+            if position.magic == magic
+        ]
+
+        for ticket in tickets:
+            self.position_close(ticket)
+
+        for order in list(self._broker.pending_orders):
+            if order.magic == magic:
+                self._broker.order_delete(order.ticket)

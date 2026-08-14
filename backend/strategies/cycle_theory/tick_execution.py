@@ -184,7 +184,24 @@ class CycleTheoryTickExecutionHarness:
                 exit_price,
             )
 
-            if self.broker.position_close(position.ticket):
+            close_at = getattr(
+                self.broker,
+                "position_close_at",
+                None,
+            )
+
+            if close_at is not None:
+                closed = close_at(
+                    ticket=position.ticket,
+                    exit_price=exit_price,
+                    kind=exit_kind,
+                )
+            else:
+                closed = self.broker.position_close(
+                    position.ticket
+                )
+
+            if closed:
                 events.append(
                     TickExecutionEvent(
                         kind=exit_kind,
