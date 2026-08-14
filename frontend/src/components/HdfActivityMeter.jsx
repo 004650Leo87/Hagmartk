@@ -300,13 +300,35 @@ export default function HdfActivityMeter() {
                 <span style={{ fontWeight: 700, fontSize: '11px', color: pulseColor }}>{lastPulseType} ({lastPulseTime})</span>
               </div>
 
-              <div style={{ gridColumn: 'span 2', background: 'rgba(255, 255, 255, 0.02)', padding: '6px', borderRadius: '4px' }}>
-                <span style={{ color: 'var(--hk-text-muted)', display: 'block', fontSize: '9px', marginBottom: '4px' }}>FUNIL QUANTITATIVO HDF</span>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px' }}>
-                  <span>HDF_D: <strong>{totals.hdf_d || 0}</strong></span>
-                  <span>HDF_DV: <strong>{totals.hdf_dv || 0}</strong></span>
-                  <span>HDF_DP: <strong>{totals.hdf_dp || 0}</strong></span>
-                  <span>HDF_DVP: <strong>{totals.hdf_dvp || 0}</strong></span>
+              <div style={{ gridColumn: 'span 2', background: 'rgba(0, 242, 254, 0.04)', border: '1px solid rgba(0, 242, 254, 0.2)', padding: '8px', borderRadius: '4px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <span style={{ fontWeight: 700, color: 'var(--hk-accent-cyan)', fontSize: '10px', letterSpacing: '0.5px' }}>
+                    🟢 SESSÃO LIVE (PROSPECTIVE REAL)
+                  </span>
+                  <span style={{ fontSize: '8px', color: '#64748b' }}>Desde início do Shadow</span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px', fontSize: '9px', marginBottom: '6px' }}>
+                  <div>Scans: <strong>{totals.scan_cycles?.toLocaleString() || 0}</strong></div>
+                  <div>Candles avaliados: <strong>{totals.evaluations?.toLocaleString() || 0}</strong></div>
+                </div>
+
+                <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.08)', paddingTop: '6px', marginBottom: '6px' }}>
+                  <span style={{ color: 'var(--hk-text-muted)', display: 'block', fontSize: '8px', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Pré-Confluências & Estágios
+                  </span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px' }}>
+                    <span title="Divergência HDF_D identificada no Live">HDF_D: <strong style={{ color: '#00f2fe' }}>{totals.hdf_d || 0}</strong></span>
+                    <span title="Divergência + Volume no Live">HDF_DV: <strong style={{ color: '#00f2fe' }}>{totals.hdf_dv || 0}</strong></span>
+                    <span title="Divergência + Padrão no Live">HDF_DP: <strong style={{ color: '#00f2fe' }}>{totals.hdf_dp || 0}</strong></span>
+                    <span title="Tríplice Confluência DVP no Live">HDF_DVP: <strong style={{ color: '#ffb020' }}>{totals.hdf_dvp || 0}</strong></span>
+                  </div>
+                </div>
+
+                <div style={{ borderTop: '1px solid rgba(255, 255, 255, 0.08)', paddingTop: '6px', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '4px', fontSize: '9px' }}>
+                  <div>Candidatos: <strong style={{ color: '#00f2fe' }}>{totals.candidates || 0}</strong></div>
+                  <div>ARMED: <strong style={{ color: '#ffb020' }}>{totals.armed || 0}</strong></div>
+                  <div>ACTIVATED: <strong style={{ color: '#21d68d' }}>{totals.activated || 0}</strong></div>
+                  <div>INVALIDATED: <strong style={{ color: '#ff5f72' }}>{totals.invalidated || 0}</strong></div>
                 </div>
               </div>
 
@@ -320,12 +342,11 @@ export default function HdfActivityMeter() {
                       borderBottom: '1px dotted #00f2fe',
                       paddingBottom: '1px',
                     }}
-                    title="Passe o mouse para ver a lista de candidatos reais"
+                    title="Passe o mouse para ver a lista de candidatos vivos no Live"
                   >
-                    CANDIDATOS: <strong style={{ color: '#00f2fe' }}>{totals.candidates || 0} 🛈</strong>
+                    HOVER CANDIDATOS VIVOS: <strong style={{ color: '#00f2fe' }}>{totals.candidates || 0} 🛈</strong>
                   </span>
-                  <span>ARMADO: <strong style={{ color: '#ffb020' }}>{totals.armed || 0}</strong></span>
-                  <span>ATIVADO: <strong style={{ color: '#21d68d' }}>{totals.activated || 0}</strong></span>
+                  <span>STATUS: <strong style={{ color: '#21d68d' }}>{statusText}</strong></span>
                 </div>
 
                 {/* Popover de Hover dos Candidatos Reais */}

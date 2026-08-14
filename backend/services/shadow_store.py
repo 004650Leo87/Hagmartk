@@ -476,6 +476,96 @@ class ShadowStoreRepository:
                 )
             return None
 
+    def _get_live_candidates(
+        self,
+        cursor: Any,
+        symbol: Optional[str] = None,
+        timeframe: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        Retorna exclusivamente os candidatos VIVOS (não expirados) respeitando a janela
+        oficial de ativação da estratégia congelada (max_activation_bars = 5 candles).
+        Preserva 100% os registros históricos no SQLite.
+        """
+        from backend.core.time_utils import parse_utc_timestamp, now_utc_datetime
+
+        now_dt = now_utc_datetime()
+        TIMEFRAME_BAR_SECONDS = {
+            "M1": 60,
+            "M5": 300,
+            "M15": 900,
+            "M30": 1800,
+            "H1": 3600,
+            "H4": 14400,
+            "D1": 86400,
+        }
+        MAX_ACTIVATION_BARS = 5  # Regra oficial da estratégia congelada Candidate V1
+
+        query = (
+            "SELECT evidence_id, symbol, timeframe, direction, variant_stage, "
+            "volume_pass, pattern_pass, pattern_type, relative_volume, detected_at, created_at, pivot_2_time "
+            "FROM shadow_hdf_evidence "
+            "WHERE candidate_created = 1 AND is_test = 0"
+        )
+        params: List[Any] = []
+        if symbol:
+            query += " AND symbol = ?"
+            params.append(symbol)
+        if timeframe:
+            query += " AND timeframe = ?"
+            params.append(timeframe)
+
+        query += " ORDER BY created_at DESC"
+
+        cursor.execute(query, params)
+        c_rows = cursor.fetchall()
+
+        live_items = []
+        for r in c_rows:
+            tf = r["timeframe"].upper()
+            bar_sec = TIMEFRAME_BAR_SECONDS.get(tf, 900)
+            max_validity_sec = MAX_ACTIVATION_BARS * bar_sec
+
+            ts_str = r["created_at"] or r["detected_at"] or r["pivot_2_time"]
+            dt = parse_utc_timestamp(ts_str)
+            if dt is None:
+                continue
+
+            age_sec = (now_dt - dt).total_seconds()
+            if age_sec < 0:
+                age_sec = 0
+
+            # Se a idade em segundos ultrapassar o limite de max_activation_bars candles, o candidato é STALE/EXPIRED
+            if age_sec > max_validity_sec:
+                continue
+
+            confluences = ["Divergência HDF_D"]
+            if r["volume_pass"]:
+                vol_val = round(float(r["relative_volume"] or 0.0), 2)
+                confluences.append(f"Volume ({vol_val}x)" if vol_val > 0 else "Volume")
+            if r["pattern_pass"]:
+                pat_name = r["pattern_type"] if r["pattern_type"] and r["pattern_type"] != "NONE" else "Padrão"
+                confluences.append(f"Padrão ({pat_name})")
+
+            pending = []
+            if not r["volume_pass"]:
+                pending.append("Filtro de Volume")
+            if not r["pattern_pass"]:
+                pending.append("Padrão de Reversão")
+
+            live_items.append({
+                "evidence_id": r["evidence_id"],
+                "symbol": r["symbol"],
+                "timeframe": r["timeframe"],
+                "direction": r["direction"],
+                "stage": r["variant_stage"] or "CANDIDATO",
+                "confluences": confluences,
+                "pending": pending,
+                "updated_at": r["created_at"] or r["detected_at"],
+            })
+
+        return live_items
+
     def get_shadow_heartbeat(self, candidate_id: str = "hdf_dvp_exit_2r") -> Dict[str, Any]:
         """Retorna telemetria e diagnósticos de execução autônoma do Shadow Scanner em tempo real."""
         from backend.services.shadow_scanner import SHADOW_ASSETS, SHADOW_TIMEFRAMES, get_asset_class
@@ -541,47 +631,14 @@ class ShadowStoreRepository:
                     "evaluation_count_total": evaluations,
                     "scan_cycle_count_total": scan_cycles,
                     "last_result_stage": last_stage,
-                    "scan_age_seconds": age_seconds,
                     "is_stale": is_stale,
                     "last_error": err_msg,
                 })
 
-        # Buscar lista detalhada dos candidatos REAIS para a experiência de hover
-        candidate_items = []
+        # Buscar lista detalhada dos candidatos VIVOS (não expirados) para a experiência de hover
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                "SELECT evidence_id, symbol, timeframe, direction, variant_stage, volume_pass, pattern_pass, pattern_type, relative_volume, detected_at, created_at "
-                "FROM shadow_hdf_evidence "
-                "WHERE candidate_created = 1 AND is_test = 0 "
-                "ORDER BY created_at DESC LIMIT 20"
-            )
-            c_rows = cursor.fetchall()
-            for r in c_rows:
-                confluences = ["Divergência HDF_D"]
-                if r["volume_pass"]:
-                    vol_val = round(float(r["relative_volume"] or 0.0), 2)
-                    confluences.append(f"Volume ({vol_val}x)" if vol_val > 0 else "Volume")
-                if r["pattern_pass"]:
-                    pat_name = r["pattern_type"] if r["pattern_type"] and r["pattern_type"] != "NONE" else "Padrão"
-                    confluences.append(f"Padrão ({pat_name})")
-
-                pending = []
-                if not r["volume_pass"]:
-                    pending.append("Filtro de Volume")
-                if not r["pattern_pass"]:
-                    pending.append("Padrão de Reversão")
-
-                candidate_items.append({
-                    "evidence_id": r["evidence_id"],
-                    "symbol": r["symbol"],
-                    "timeframe": r["timeframe"],
-                    "direction": r["direction"],
-                    "stage": r["variant_stage"] or "CANDIDATO",
-                    "confluences": confluences,
-                    "pending": pending,
-                    "updated_at": r["created_at"] or r["detected_at"],
-                })
+            candidate_items = self._get_live_candidates(cursor)
 
         return {
             "generated_at": now_str,
@@ -1195,8 +1252,8 @@ class ShadowStoreRepository:
             cursor.execute(f"SELECT COUNT(*) FROM shadow_hdf_evidence {ev_where} AND volume_pass = 1 AND pattern_pass = 1", ev_params)
             hdf_dvp = cursor.fetchone()[0]
 
-            cursor.execute(f"SELECT COUNT(*) FROM shadow_hdf_evidence {ev_where} AND candidate_created = 1", ev_params)
-            candidates = cursor.fetchone()[0]
+            live_cands = self._get_live_candidates(cursor, symbol=symbol, timeframe=timeframe)
+            candidates = len(live_cands)
 
             cursor.execute(f"SELECT COUNT(*) FROM shadow_events {evt_where} AND event_id NOT LIKE 'test_%'", evt_params)
             real_events_count = cursor.fetchone()[0]

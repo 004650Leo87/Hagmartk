@@ -229,7 +229,7 @@ def get_candles_detailed(
 @router.get("/market/indicators/{symbol}")
 def get_market_indicators(
     symbol: str,
-    timeframe: int | None = None,
+    timeframe: str | int | None = None,
     bars: int = 500,
     offset: int = 0,
     rsi: str | None = "14",
@@ -249,6 +249,30 @@ def get_market_indicators(
             timeframe = mt5.TIMEFRAME_M5
         except Exception:
             timeframe = 5
+    elif isinstance(timeframe, str):
+        try:
+            import MetaTrader5 as mt5
+
+            tf_map = {
+                "M1": getattr(mt5, "TIMEFRAME_M1", 1),
+                "M5": getattr(mt5, "TIMEFRAME_M5", 5),
+                "M15": getattr(mt5, "TIMEFRAME_M15", 15),
+                "M30": getattr(mt5, "TIMEFRAME_M30", 30),
+                "H1": getattr(mt5, "TIMEFRAME_H1", 16385),
+                "H4": getattr(mt5, "TIMEFRAME_H4", 16388),
+                "D1": getattr(mt5, "TIMEFRAME_D1", 16408),
+                "W1": getattr(mt5, "TIMEFRAME_W1", 32769),
+                "MN1": getattr(mt5, "TIMEFRAME_MN1", 49153),
+            }
+            if timeframe.upper().strip() in tf_map:
+                timeframe = tf_map[timeframe.upper().strip()]
+            else:
+                timeframe = int(timeframe)
+        except Exception:
+            try:
+                timeframe = int(timeframe)
+            except ValueError:
+                timeframe = 15
 
     def parse_periods(param: str | None) -> list[int]:
         if not param:
@@ -681,4 +705,4 @@ def get_market_catalog():
         raise HTTPException(
             status_code=500,
             detail=f"Erro ao carregar o catálogo de ativos: {error}",
-        ) from error
+        ) from error
