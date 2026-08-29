@@ -1,0 +1,6 @@
+pandas==3.0.5
+numpy==2.5.1
+fastapi==0.141.1
+pydantic==2.13.4
+uvicorn==0.52.1
+MetaTrader5==5.0.6070
