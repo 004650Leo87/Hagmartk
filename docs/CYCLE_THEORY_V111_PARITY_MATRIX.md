@@ -16,7 +16,7 @@ No optimization, performance claim, or production promotion is allowed until all
 | Margin calculation | 293 | `execution_model.py::_calc_margin_buy` | PARTIAL | Synthetic fixed-rate fallback removed. Explicit broker margin result is honored; unavailable calculation follows MQ5 failure branch. Real MT5 contract calculation still needs evidence. |
 | Market entry side | 1376-1410 | `execution_model.py` | PROVEN | BUY uses Ask; SELL uses Bid. |
 | Limit submission | 1379/1410 | `execution_model.py` + `broker.py` | PROVEN | Submitted limit price/volume preserved by current broker model. |
-| Pending fill trigger | MT5 engine | `tick_execution.py` | MODELLED | BUY_LIMIT Ask<=price; SELL_LIMIT Bid>=price. Needs real MT5 event parity evidence. |
+| Pending fill trigger | MT5 engine | `tick_execution.py` | MODELLED | BUY_LIMIT Ask<=price; SELL_LIMIT Bid>=price. Gate 3K additionally proves that the current research harness fills a gap-through limit at the submitted limit price. This is an explicit model contract, not MT5 parity; real tick/deal evidence is still required. |
 | Spread gate | strategy entry functions | `signal_engine.py` | PARTIAL | Strategy checks spread; replay reconstructs Ask from historical/default spread. Historical spread quality remains data-dependent. |
 | Stops/freeze validation | 412-441 | `position_manager.py::pode_modificar` | PROVEN | Minimum distance logic mirrors source. |
 | Partial exits | 1200-1264 | `position_manager.py::manage_partials` | PROVEN | Ordering, one-time volume read and minimum-volume quirks intentionally preserved. |
