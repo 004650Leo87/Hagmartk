@@ -45,6 +45,8 @@ class ReplayResult:
     telemetry_events: int
     summary: LedgerSummary
     execution_model: str = "OHLC_PATH_V0"
+    cost_model: str = "ZERO_COMMISSION_ZERO_SWAP"
+    fill_model: str = "OHLC_PATH_IDEALIZED_NO_SLIPPAGE"
     terminal_unrealized_r: float = 0.0
     mark_to_market_net_r: float = 0.0
     evaluation_first_time: datetime | None = None
@@ -172,6 +174,11 @@ class CycleTheoryHistoricalReplay:
         self.raw_broker = broker
         self.default_spread_points = default_spread_points
         self.max_history_bars = max_history_bars
+
+        # Gate 3I: economic assumptions must be explicit. Historical OHLC
+        # replay has no broker evidence for commission, swap, gaps or slippage.
+        self.cost_model = "ZERO_COMMISSION_ZERO_SWAP"
+        self.fill_model = "OHLC_PATH_IDEALIZED_NO_SLIPPAGE"
 
         self.ledger = RealizedTradeLedger(
             point=broker.point
@@ -334,6 +341,8 @@ class CycleTheoryHistoricalReplay:
                 self.adapter.sm.telemetry.events
             ),
             summary=summary,
+            cost_model=self.cost_model,
+            fill_model=self.fill_model,
             terminal_unrealized_r=terminal_unrealized_r,
             mark_to_market_net_r=mark_to_market_net_r,
             evaluation_first_time=eval_first,
