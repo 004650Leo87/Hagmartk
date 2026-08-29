@@ -1,4 +1,4 @@
-"""
+﻿"""
 CYCLE THEORY V111 — FIDELITY PORT
 CycleTheoryExecutionModel — equivalente a CalcLot, ExecutarCompra, ExecutarVenda,
 GetSmartBuffer do MQ5 (seções 8 e 18-19 da Source Audit).
@@ -48,19 +48,19 @@ class CycleTheoryExecutionModel:
         # Verificação de margem — original usa ORDER_TYPE_BUY mesmo para venda (quirk preservado)
         margem_necessaria = self._calc_margin_buy(lot)
         livre = self.broker.margin_free
-        if livre > 0 and margem_necessaria > livre:
+        if margem_necessaria is not None and livre > 0 and margem_necessaria > livre:
             lot = math.floor((lot * (livre / margem_necessaria)) / step) * step
             lot = max(mn, min(mx, lot))
 
         return lot
 
-    def _calc_margin_buy(self, lot: float) -> float:
-        """Placeholder simplificado de OrderCalcMargin(ORDER_TYPE_BUY, ...) —
-        a fórmula real de margem depende da corretora/contrato; para research
-        usamos uma proporção fixa configurável via broker, mantendo o
-        contrato de que a verificação sempre usa o lado BUY."""
-        contract_margin_rate = getattr(self.broker, "margin_rate_per_lot", 1000.0)
-        return lot * contract_margin_rate
+    def _calc_margin_buy(self, lot: float):
+        """Equivalent boundary for OrderCalcMargin(ORDER_TYPE_BUY, ...).
+
+        None means the broker margin service is unavailable; this mirrors the
+        MQ5 branch where OrderCalcMargin returns false and no scaling occurs.
+        """
+        return self.broker.order_calc_margin_buy(lot)
 
     def executar_compra(self, sm: CycleTheoryStateMachine, sl: float, ep: float,
                          dist_sl: float) -> bool:

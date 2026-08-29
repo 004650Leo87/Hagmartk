@@ -1,4 +1,4 @@
-"""
+﻿"""
 CYCLE THEORY V111 — FIDELITY PORT
 Camada de abstração de broker/mercado (equivalente às chamadas MQL5: SymbolInfo,
 CTrade, PositionGetX, OrderGetX, HistoryDealGetX, iHigh/iLow/iClose/iTime/
@@ -96,6 +96,7 @@ class MockBroker:
 
         self.balance: float = 100_000.0
         self.margin_free: float = 100_000.0
+        self.margin_calculator = None
 
         self.now: datetime = datetime(2026, 1, 5, 1, 0, 0)  # broker server time
 
@@ -109,6 +110,11 @@ class MockBroker:
 
         # instrumenta falhas forçadas para testes de "ERRO: retcode"
         self.force_trade_failure: bool = False
+
+    def order_calc_margin_buy(self, lot: float):
+        if self.margin_calculator is None:
+            return None
+        return float(self.margin_calculator(lot, self.ask))
 
     # ---------------- ordens/execução ----------------
     def next_ticket(self) -> int:
