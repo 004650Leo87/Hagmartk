@@ -245,17 +245,8 @@ class CycleTheoryHistoricalReplay:
 
         for index, bar in enumerate(ordered):
 
-            self._publish_history(
-                ordered,
-                index,
-            )
-
-            self.raw_broker.atr_value = _atr(
-                ordered[:index + 1],
-                self.inputs.atr_period,
-            )
-
             if index < warmup_bars:
+                self._publish_history(ordered, index)
                 continue
 
             if eval_first is None:
@@ -274,7 +265,21 @@ class CycleTheoryHistoricalReplay:
                 * self.raw_broker.point
             )
 
+            observed_high = bar.open
+            observed_low = bar.open
+
             for bid in _path(bar):
+                observed_high = max(observed_high, bid)
+                observed_low = min(observed_low, bid)
+                partial_bar = ReplayBar(
+                    time=bar.time, open=bar.open, high=observed_high,
+                    low=observed_low, close=bid, spread_points=bar.spread_points,
+                )
+                visible_bars = ordered[:index] + [partial_bar]
+                self._publish_history(visible_bars, index)
+                self.raw_broker.atr_value = _atr(
+                    visible_bars, self.inputs.atr_period,
+                )
 
                 ask = bid + spread
 
