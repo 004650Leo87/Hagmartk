@@ -32,3 +32,5 @@ No optimization, performance claim, or production promotion is allowed until all
 | Current-bar OHLC visibility | `iHigh/iLow/iClose` on forming bar | `historical_replay.py` progressive partial bar | PROVEN | Replay publishes only high/low/close observed up to each synthetic tick; adversarial Gate 3J test prevents final-bar look-ahead. |
 | Timezone/server time | `TimeCurrent`, `iTime` | replay datetime normalization | PARTIAL | Gate 3G forbids silently stripping timezone offsets; replay requires explicit naive broker-server time. Historical UTC-to-server conversion still needs broker evidence. |
 | Terminal open PnL | live position state | replay mark-to-market | RESEARCH | Explicit research metric; not a synthetic realized trade. |
+
+| Warmup execution semantics | EA starts evaluating immediately after OnInit; indicator availability is terminal-managed | replay preloads history and intentionally suppresses strategy ticks during configured warmup | MODELLED | Gate 3L proves current replay behavior. V111 has no explicit warmup gate or BarsCalculated guard; the CLI-derived max(5, ATR period) remains a research harness assumption, not source parity. |
