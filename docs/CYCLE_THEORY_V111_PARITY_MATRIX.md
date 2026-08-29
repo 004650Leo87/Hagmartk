@@ -25,7 +25,7 @@ No optimization, performance claim, or production promotion is allowed until all
 | Pullback cancellation | 1286-1356 | `research_adapter.py::check_pending_cancellation` | PROVEN | Ordering and magic-only pending lookup quirk preserved. |
 | Trade closure reset delay | 1271-1281 | `research_adapter.py::check_trade_closure` | PROVEN | 3-second guard preserved, but replay timestamp granularity may affect equivalence. |
 | Intrabar price path | MT5 real ticks | `historical_replay.py::_path` | MODELLED | Bull: O-L-H-C; Bear: O-H-L-C. Deterministic assumption can change event ordering. |
-| SL/TP execution | MT5 trade engine | `tick_execution.py` | MODELLED | Trigger sides are correct, but exits execute exactly at SL/TP with no gap/slippage model. |
+| SL/TP execution | MT5 trade engine | `tick_execution.py` | MODELLED | Trigger sides are correct. Gate 3M proves the current research harness executes a gap-through protective stop exactly at the submitted SL, not at the observed gap quote. This is an explicit idealized model contract, not MT5 parity; real tick/deal evidence is required before performance claims. |
 | Commission/swap | 348-350 / MT5 deal history | broker/ledger | MODELLED | MQ5 includes profit+swap+commission. Gate 3I makes replay zero-cost assumption explicit; real broker costs are not yet modeled. |
 | Slippage/gaps | MT5 execution | replay harness | MODELLED | Gate 3I explicitly labels OHLC replay as idealized/no-slippage. Real broker gap/slippage parity remains unproven. |
 | ATR | `iATR` | `historical_replay.py::_atr` | PARTIAL | Gate 3F removed intrabar future-high/low leakage and ATR now evolves with revealed path. Exact MT5 indicator parity still needs terminal evidence. |
