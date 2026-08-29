@@ -29,5 +29,6 @@ No optimization, performance claim, or production promotion is allowed until all
 | Commission/swap | 348-350 / MT5 deal history | broker/ledger | MODELLED | MQ5 includes profit+swap+commission. Gate 3I makes replay zero-cost assumption explicit; real broker costs are not yet modeled. |
 | Slippage/gaps | MT5 execution | replay harness | MODELLED | Gate 3I explicitly labels OHLC replay as idealized/no-slippage. Real broker gap/slippage parity remains unproven. |
 | ATR | `iATR` | `historical_replay.py::_atr` | PARTIAL | Gate 3F removed intrabar future-high/low leakage and ATR now evolves with revealed path. Exact MT5 indicator parity still needs terminal evidence. |
+| Current-bar OHLC visibility | `iHigh/iLow/iClose` on forming bar | `historical_replay.py` progressive partial bar | PROVEN | Replay publishes only high/low/close observed up to each synthetic tick; adversarial Gate 3J test prevents final-bar look-ahead. |
 | Timezone/server time | `TimeCurrent`, `iTime` | replay datetime normalization | PARTIAL | Gate 3G forbids silently stripping timezone offsets; replay requires explicit naive broker-server time. Historical UTC-to-server conversion still needs broker evidence. |
 | Terminal open PnL | live position state | replay mark-to-market | RESEARCH | Explicit research metric; not a synthetic realized trade. |
