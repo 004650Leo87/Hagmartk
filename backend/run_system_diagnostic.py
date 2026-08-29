@@ -1,4 +1,4 @@
-"""Diagnostic entrypoint for Hagmartk runtime.
+﻿"""Diagnostic entrypoint for Hagmartk runtime.
 
 Usage:
     python -m backend.run_system_diagnostic
@@ -64,4 +64,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-*** End Patch

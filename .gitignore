@@ -27,3 +27,7 @@ scratch/
 # OS
 .DS_Store
 Thumbs.db
+# Local AI/tooling artifacts
+.git_diff*.txt
+apply.js
+data_cache/*.db-journal
