@@ -121,10 +121,12 @@ def test_mt5_adapter_with_mocked_mt5(monkeypatch):
 
     quote = adapter.get_quote("EURUSD")
     assert quote["symbol"] == "EURUSD"
+    assert quote["time"] == datetime.fromtimestamp(1620000000, tz=timezone.utc).isoformat()
 
     # by count
     candles = adapter.get_candles("EURUSD", 5, count=3)
     assert isinstance(candles, list) and len(candles) == 3
+    assert candles[0]["time"] == datetime.fromtimestamp(1620000000, tz=timezone.utc).isoformat()
 
     # by range
     now = datetime.now(timezone.utc)

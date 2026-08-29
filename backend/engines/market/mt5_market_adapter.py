@@ -16,7 +16,7 @@ Design notes:
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from .market_adapter import MarketAdapter
 from backend.core.constants import categorize_symbol
@@ -151,21 +151,6 @@ class MT5MarketAdapter(MarketAdapter):
 
         return info
 
-    def _get_broker_utc_offset_seconds(self) -> int:
-        """Calcula o offset em segundos entre o relógio do servidor do broker MT5 e o UTC real.
-        Garante que timestamps de candles e cotações sejam convertidos para UTC real sem distorção.
-        """
-        try:
-            mt5 = self._load_mt5()
-            tick = mt5.symbol_info_tick("XAUUSD") or mt5.symbol_info_tick("EURUSD")
-            if tick and getattr(tick, "time", 0) > 0:
-                now_utc_ts = datetime.now(timezone.utc).timestamp()
-                diff_hours = round((tick.time - now_utc_ts) / 3600.0)
-                return int(diff_hours * 3600)
-        except Exception:
-            pass
-        return 3 * 3600
-
     def get_quote(self, symbol: str) -> Dict[str, Any]:
         mt5 = self._load_mt5()
 
@@ -199,10 +184,9 @@ class MT5MarketAdapter(MarketAdapter):
         if point > 0:
             spread_points = (ask - bid) / point
 
-        offset_sec = self._get_broker_utc_offset_seconds()
         raw_tick_time = getattr(tick, "time", 0)
         tick_time = (
-            (datetime.fromtimestamp(raw_tick_time, tz=timezone.utc) - timedelta(seconds=offset_sec)).isoformat()
+            datetime.fromtimestamp(raw_tick_time, tz=timezone.utc).isoformat()
             if raw_tick_time > 0
             else datetime.now(timezone.utc).isoformat()
         )
@@ -299,12 +283,11 @@ class MT5MarketAdapter(MarketAdapter):
             except Exception:
                 return getattr(obj, key, None)
 
-        offset_sec = self._get_broker_utc_offset_seconds()
 
         for r in rates:
             time_val = _get_field(r, "time")
             timestamp = (
-                (datetime.fromtimestamp(time_val, tz=timezone.utc) - timedelta(seconds=offset_sec)).isoformat()
+                datetime.fromtimestamp(time_val, tz=timezone.utc).isoformat()
                 if time_val is not None
                 else None
             )
