@@ -63,11 +63,13 @@ def _datetime(value: Any) -> datetime:
             str(value).replace("Z", "+00:00")
         )
 
-    # V111/MockBroker uses naive datetimes.
-    # Historical MT5/Pandas timestamps may arrive timezone-aware.
-    # Normalize only the replay boundary; do not change strategy logic.
+    # V111 uses broker-server wall clock (TimeCurrent/iTime).
+    # A timezone-aware timestamp cannot be relabelled as server time.
     if result.tzinfo is not None:
-        result = result.replace(tzinfo=None)
+        raise ValueError(
+            "Cycle Theory replay requires naive broker server time; "
+            "timezone-aware input needs an explicit server time conversion."
+        )
 
     return result
 
