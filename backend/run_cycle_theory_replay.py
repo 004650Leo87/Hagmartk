@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import argparse
 from dataclasses import asdict
@@ -52,15 +52,28 @@ def main() -> None:
         default=0,
     )
 
+    parser.add_argument(
+        "--warmup",
+        type=int,
+        default=None,
+        help="Warmup bars before evaluation. If None, derived dynamically."
+    )
+
     args = parser.parse_args()
 
     service = MarketService()
 
     try:
+        inputs = baseline_inputs()
+
+        warmup_bars = args.warmup
+        if warmup_bars is None:
+            warmup_bars = max(5, inputs.atr_period)
+
         dataframe = service.candles(
             args.symbol,
             TIMEFRAMES[args.timeframe],
-            bars=args.bars,
+            bars=args.bars + warmup_bars,
             offset=args.offset,
         )
 
@@ -99,8 +112,6 @@ def main() -> None:
             ),
         )
 
-        inputs = baseline_inputs()
-
         replay = CycleTheoryHistoricalReplay(
             symbol=args.symbol,
             timeframe=args.timeframe,
@@ -116,19 +127,27 @@ def main() -> None:
             dataframe
         )
 
-        result = replay.run(bars)
+        result = replay.run(bars, warmup_bars=warmup_bars)
         summary = asdict(result.summary)
 
         print()
         print("=" * 68)
-        print("CYCLE THEORY V111 — HISTORICAL REPLAY")
+        print("CYCLE THEORY V111 â€” HISTORICAL REPLAY")
         print("=" * 68)
         print(
             f"{result.symbol} {result.timeframe}"
-            f" | candles: {result.bars_processed}"
+            f" | evaluation bars: {result.evaluation_bars}"
+            f" | warmup bars: {result.warmup_bars}"
         )
         print(
             f"execution model: {result.execution_model}"
+        )
+        print("-" * 68)
+        print(
+            f"evaluation start: {result.evaluation_first_time}"
+        )
+        print(
+            f"evaluation end  : {result.evaluation_last_time}"
         )
         print("-" * 68)
         print(
@@ -138,12 +157,16 @@ def main() -> None:
             f" | BE: {summary['breakeven']}"
         )
         print(
-            f"net R: {summary['net_r']:.4f}"
+            f"realized net R: {summary['net_r']:.4f}"
             f" | expectancy: {summary['expectancy_r']:.4f} R"
         )
         print(
             "profit factor R:",
             summary["profit_factor_r"],
+        )
+        print(
+            f"terminal unrealized R: {result.terminal_unrealized_r:.4f}"
+            f" | mark-to-market net R: {result.mark_to_market_net_r:.4f}"
         )
         print(
             f"open positions: {result.open_positions}"
