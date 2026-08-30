@@ -1,75 +1,14 @@
-# HAGMARTK MASTERPLAN
+# HAGMARTK MASTERPLAN — SUPERSEDED
 
-## Missão
+Status: **SUPERSEDED em 2026-08-29**.
 
-Construir a plataforma de inteligência para mercados financeiros mais completa do mercado.
+Este arquivo antigo continha uma visão genérica e UI/feature-first incompatível com a governança atual. Ele não é mais fonte normativa.
 
-A Hagmartk não será apenas um software de análise.
+Use, nesta ordem:
+1. `HAGMARTK_MF_MASTER_WHITEPAPER.md`
+2. `HAGMARTK_MF_PRODUCT_NORTH.md`
+3. `HAGMARTK_EVENT_PROTOCOL_V1.md`
+4. `CYCLE_THEORY_V111_PARITY_MATRIX.md`
+5. `HAGMARTK_MF_MASTER_PROMPT.md`
 
-Ela será um ecossistema completo capaz de:
-
-- conectar ao MetaTrader 5
-- conectar APIs de mercado
-- realizar backtests
-- otimizar estratégias
-- executar inteligência artificial
-- analisar fluxo
-- identificar oportunidades
-- gerenciar risco
-- gerar dashboards
-- produzir relatórios
-- controlar operações
-- fornecer sinais estatísticos
-- permitir automações
-- disponibilizar APIs
-- possuir painel administrativo
-- suportar milhares de usuários
-
----
-
-# Arquitetura
-
-backend/
-frontend/
-database/
-engine/
-strategies/
-media/
-logs/
-docs/
-
----
-
-# Objetivos
-
-Criar um software escalável.
-
-Criar um software modular.
-
-Criar código limpo.
-
-Criar documentação completa.
-
-Criar testes automatizados.
-
-Criar uma arquitetura preparada para crescer durante muitos anos.
-
----
-
-# Filosofia
-
-Nenhum módulo poderá depender diretamente de outro.
-
-Toda comunicação deverá ocorrer através de interfaces bem definidas.
-
-Cada componente deverá possuir responsabilidade única.
-
-Todo código deverá ser reutilizável.
-
-Toda alteração deverá ser documentada.
-
----
-
-# Meta Final
-
-Criar a melhor plataforma de inteligência para mercados financeiros do mundo.
+A direção vigente é evidence-first: dados reais, fidelidade, validação, shadow, Market Events e publicação read-only. Não há autorização para otimização prematura, sinais sem evidência ou execução autônoma de dinheiro real.
