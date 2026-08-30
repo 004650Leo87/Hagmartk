@@ -50,3 +50,20 @@ def test_replay_publishes_progressive_atr_inside_current_bar(monkeypatch):
     assert observed[0] == _atr(history + [open_snapshot], replay.inputs.atr_period)
     assert observed[-1] == _atr(history + [current], replay.inputs.atr_period)
     assert observed[0] < observed[-1]
+
+
+def test_atr_is_zero_until_period_plus_one_bars_exist():
+    period = 14
+    bars = [_bar(i, 1.1010, 1.0990) for i in range(period)]
+    assert _atr(bars, period) == 0.0
+
+
+def test_first_atr_exists_at_period_plus_one_bars():
+    period = 14
+    bars = [_bar(i, 1.1010, 1.0990) for i in range(period + 1)]
+    expected = []
+    for i in range(1, period + 1):
+        prev = bars[i - 1].close
+        cur = bars[i]
+        expected.append(max(cur.high-cur.low, abs(cur.high-prev), abs(cur.low-prev)))
+    assert _atr(bars, period) == sum(expected) / period

@@ -134,10 +134,12 @@ def _atr(
     period: int,
 ) -> float:
 
-    if period <= 0 or len(bars) < 2:
+    # MetaQuotes ATR.mq5 requires rates_total > period: one previous close
+    # plus `period` True Range observations before the first ATR exists.
+    if period <= 0 or len(bars) <= period:
         return 0.0
 
-    start = max(1, len(bars) - period)
+    start = len(bars) - period
     values: list[float] = []
 
     for index in range(start, len(bars)):
