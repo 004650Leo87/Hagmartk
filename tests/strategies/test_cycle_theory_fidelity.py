@@ -581,3 +581,25 @@ class TestPendingOrderVolumeFidelity(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_restart_active_trade_overwrites_saved_channel_before_load():
+    """Source quirk: OnTick SaveMemory runs before ManageTrailing LoadMemory."""
+    original = setup_adapter()
+    s = original.sm.state
+    s.ch_high, s.ch_low, s.super_size = 1.1050, 1.0950, 0.0100
+    s.exp_level, s.setup_dir, s.ref_time_start = 1.1150, 1, original.broker.now
+    original.persistence.save_memory(original.sm)
+
+    restarted = setup_adapter()
+    restarted.persistence = original.persistence
+    restarted.position_manager.persistence = original.persistence
+    restarted.broker.buy(0.01, 0.0, 0.0, restarted.inputs.magic_num)
+    restarted.sm.state.current_state = BotState.STATE_STARTING
+    restarted.on_tick()
+
+    probe = setup_adapter()
+    probe.persistence = original.persistence
+    assert probe.persistence.load_memory(probe.sm)
+    assert probe.sm.state.super_size == 0.0
+    assert probe.sm.state.ch_high == 0.0
