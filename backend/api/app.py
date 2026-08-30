@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+﻿from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.api.routes import router
@@ -11,19 +11,25 @@ from datetime import datetime, timezone
 
 app = FastAPI(
     title="Hagmartk API",
-    description="Plataforma Profissional de Inteligência para Mercados Financeiros",
+    description="Plataforma Profissional de InteligÃªncia para Mercados Financeiros",
     version="0.1.0",
 )
 
 # Permite que o frontend React acesse a API durante o desenvolvimento.
+_default_origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+]
+_extra_origins = [
+    origin.strip()
+    for origin in os.environ.get("HAGMARTK_CORS_ORIGINS", "").split(",")
+    if origin.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5174",
-    ],
+    allow_origins=[*_default_origins, *_extra_origins],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
