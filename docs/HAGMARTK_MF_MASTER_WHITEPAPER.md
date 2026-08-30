@@ -1,7 +1,7 @@
 # HAGMARTK MF — MASTER WHITEPAPER
 
 **Status:** fonte documental executiva e técnica vigente
-**Versão:** 2026-08-29 EOD
+**Versão:** 2026-08-30 EOD
 **Projeto:** HAGMARTK Mercado Financeiro (HAGMARTK MF)
 
 ## 1. Identidade e missão
@@ -34,13 +34,21 @@ Nenhum botão decorativo. Todo controle visível exige `capability_id`, módulo 
 ## 7. Estado de fidelidade da Teoria dos Ciclos
 PROVEN inclui ordering OnTick, normalização de lote, cálculo real de margem via MT5 sem envio de ordem, lado de entrada, submissão de limit, spread gate, stops/freeze, parciais, TP final, cancelamento de pullback, reset pós-fechamento e visibilidade OHLC progressiva.
 
-Ainda PARTIAL/MODELLED: pending fill real, breakeven/trailing aceito pelo servidor, caminho intrabar, execução SL/TP em gap, comissão/swap no replay, slippage/gaps, deviation/filling server behavior, ATR terminal exato, UTC↔TimeCurrent broker-server e warmup. Esses itens bloqueiam alegações econômicas definitivas.
+Em 30/08, a lógica de breakeven/trailing foi elevada a PROVEN, o replay ganhou modo tick-backed e a inicialização ATR foi alinhada ao código padrão MetaTrader. Permanecem PARTIAL/MODELLED: aceitação/modificação pelo servidor, fills reais de pending/SL/TP, custos no replay, slippage/gaps, deviation/filling server behavior, disponibilidade live de CopyBuffer, UTC↔TimeCurrent broker-server e warmup/contexto. Esses itens bloqueiam alegações econômicas definitivas.
 
 ## 8. Evidência real capturada em 29/08
 - MT5 `order_calc_margin`, EURUSD BUY 1.0 lote, Ask 1.15824: USD 231.65 em conta 1:500; nenhuma ordem enviada.
 - EURUSD: Bid 1.15820, Ask 1.15824, Point 0.00001, spread terminal=4 e cálculo independente=4 pontos.
 - Histórico MT5 90 dias: 69 deals de saída; XAUUSD 61 saídas com comissão agregada -USD 1.83 e swap -USD 0.54. Isso prova que replay zero-cost não é economicamente fiel; não prova custos específicos da V111.
 - API Python MT5 entrega epochs de tick/candle em UTC; isso não prova o offset/DST de `TimeCurrent()` do EA.
+
+## 8A. Evidência real capturada em 30/08
+- Replay tick-backed separado passou a consumir Bid/Ask cronológicos observados; OHLC sintético não é mais confundido com execução real.
+- Em 120 candles M1 recentes, o caminho OHLC determinístico divergiu da ordem real dos extremos em 20/119 barras resolvidas de EURUSD e 11/120 de XAUUSD.
+- Histórico read-only de 180 dias encontrou 6 fills LIMIT ligados a deals; todos diferiram do preço registrado da ordem.
+- Foram encontrados 60 pares SL/TP order/deal; 55 apresentaram diferença entre nível/preço de ordem e preço executado.
+- Em 503 ordens históricas: 482 FILLED, 18 CANCELED e 3 REJECTED; rejeições incluíram LIMIT XAUUSD com ORDER_REASON_EXPERT. Isso prova rejeição como resultado real possível, não taxa da V111.
+- Nenhuma dessas amostras históricas é atribuída à V111 sem evidência de proveniência. Nenhuma ordem foi enviada pelo HAGMARTK.
 
 ## 9. Event Protocol
 Unidade pública é **Market Event / Evento de Mercado**, não “sinal”. Classes: MARKET_BRIEF, RADAR, QUANT_EVENT, EVENT_UPDATE, EVENT_AUTOPSY, RESEARCH_UPDATE, SYSTEM_STATUS. Só QUANT_EVENT pode carregar estrutura completa de referência/invalidação/objetivos. Ledger é append-only; não apagar fracassos.

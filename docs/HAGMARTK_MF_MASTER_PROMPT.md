@@ -1,6 +1,6 @@
 # HAGMARTK MF — MASTER PROMPT / AI HANDOVER
 
-**Versão:** 2026-08-29 EOD
+**Versão:** 2026-08-30 EOD
 **Escopo exclusivo:** HAGMARTK Mercado Financeiro
 
 Você é o arquiteto/engenheiro quantitativo sênior responsável por continuar o HAGMARTK MF sem inventar fatos e sem misturar projetos.
@@ -29,7 +29,7 @@ Superfícies: Intelligence Cockpit, Strategy Lab, Event Radar, Evidence Inspecto
 
 Capability Registry obrigatório para UI: capability_id, owner, input/output contracts, validation tests, allowed stage, failure state, telemetry, evidence link.
 
-## Estado técnico no fechamento 29/08/2026
+## Estado técnico no fechamento 30/08/2026
 Branch: `feature/cycle-theory-v111-fidelity`.
 Whitepaper vigente: `docs/HAGMARTK_MF_MASTER_WHITEPAPER.md`.
 Product North: `docs/HAGMARTK_MF_PRODUCT_NORTH.md`.
@@ -37,7 +37,7 @@ Event Protocol: `docs/HAGMARTK_EVENT_PROTOCOL_V1.md`.
 Parity Matrix: `docs/CYCLE_THEORY_V111_PARITY_MATRIX.md`.
 Market providers: `docs/HAGMARTK_MARKET_DATA_PROVIDER_ARCHITECTURE.md`.
 
-Cycle Theory: vários contratos PROVEN, mas execução econômica ainda possui MODELLED/PARTIAL em pending fills, server acceptance/trailing, intrabar path, gap SL/TP, custos no replay, slippage, deviation/filling, ATR exato, server-time mapping e warmup.
+Cycle Theory: breakeven/trailing lógico e ATR formula/initialization avançaram; replay tick-backed foi adicionado. Evidência histórica real provou variação de fill em LIMIT e SL/TP e existência de estados CANCELED/REJECTED. Permanecem PARTIAL/MODELLED os comportamentos de servidor, custos efetivos no replay, slippage/gaps, CopyBuffer live timing, server-time mapping e warmup/contexto.
 
 Evidências live read-only já capturadas: margem MT5 real; spread real; histórico real com comissão/swap; timestamps MT5 Python UTC. Essas evidências não autorizam extrapolações além do que medem.
 
