@@ -1,4 +1,4 @@
-﻿const API_URL = import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL : 'http://127.0.0.1:8000';
+const API_URL = import.meta.env.VITE_API_URL ? import.meta.env.VITE_API_URL : 'http://127.0.0.1:8000';
 
 async function apiRequest(endpoint, options = {}) {
   const response = await fetch(`${API_URL}${endpoint}`, {
@@ -20,7 +20,7 @@ async function apiRequest(endpoint, options = {}) {
         errorData?.message ??
         message;
     } catch {
-      // MantÃ©m a mensagem padrÃ£o quando a resposta nÃ£o Ã© JSON.
+      // Mantém a mensagem padrão quando a resposta não é JSON.
     }
 
     throw new Error(message);
@@ -39,7 +39,7 @@ export async function getSymbols() {
 
 export async function getQuote(symbol) {
   if (!symbol) {
-    throw new Error('O ativo nÃ£o foi informado.');
+    throw new Error('O ativo não foi informado.');
   }
 
   return apiRequest(
@@ -81,7 +81,7 @@ export async function getCandles(
   offset = 0,
 ) {
   if (!symbol) {
-    throw new Error('O ativo nÃ£o foi informado.');
+    throw new Error('O ativo não foi informado.');
   }
 
   const parameters = new URLSearchParams();
@@ -110,7 +110,7 @@ export async function getIndicators(
   sma = null,
 ) {
   if (!symbol) {
-    throw new Error('O ativo nÃ£o foi informado.');
+    throw new Error('O ativo não foi informado.');
   }
 
   const parameters = new URLSearchParams();
@@ -140,7 +140,7 @@ export async function getDivergences(
   offset = 0,
 ) {
   if (!symbol) {
-    throw new Error('O ativo nÃ£o foi informado.');
+    throw new Error('O ativo não foi informado.');
   }
 
   const parameters = new URLSearchParams();

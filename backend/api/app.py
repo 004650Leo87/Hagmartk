@@ -1,4 +1,4 @@
-﻿from fastapi import FastAPI
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.api.routes import router
@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 
 app = FastAPI(
     title="Hagmartk API",
-    description="Plataforma Profissional de InteligÃªncia para Mercados Financeiros",
+    description="Plataforma Profissional de Inteligência para Mercados Financeiros",
     version="0.1.0",
 )
 
