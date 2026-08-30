@@ -366,6 +366,7 @@ class TestTrailing(unittest.TestCase):
         a.on_tick()
         expected_be = round(1.1050 + 10 * 0.0001, 4)
         self.assertAlmostEqual(a.broker.positions[0].sl, expected_be, places=4)
+        self.assertEqual(a.broker.positions[0].tp, 0.0)
         a.broker.bid = 1.1050 + 0.0200  # alvo 2
         a.broker.ask = a.broker.bid + 0.0002
         a.on_tick()
@@ -381,6 +382,7 @@ class TestTrailing(unittest.TestCase):
         a.on_tick()
         expected_sl = round(1.1150 - (20 * 0.0001), 4)  # alvo - smart_buffer(20 default)
         self.assertAlmostEqual(a.broker.positions[0].sl, expected_sl, places=4)
+        self.assertEqual(a.broker.positions[0].tp, 0.0)
 
 
 class TestBreakeven(unittest.TestCase):

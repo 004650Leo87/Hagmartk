@@ -192,7 +192,7 @@ class CycleTheoryPositionManager:
                       (pos.type == PositionType.SELL and (pos.sl == 0 or novo_sl < pos.sl)))
 
             if seguro and pode_modificar(self.broker, pos.type, novo_sl, 0.0) and \
-                    self.broker.position_modify(pos.ticket, novo_sl, pos.tp):
+                    self.broker.position_modify(pos.ticket, novo_sl, 0.0):
                 s.tr_current_level = i
                 sm.telemetry.emit(EventType.TRAILING_UPDATED, self.broker.symbol, {"sl": novo_sl, "level": i})
                 break
