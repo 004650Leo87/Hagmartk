@@ -16,3 +16,10 @@ def test_replay_declares_idealized_gap_slippage_model():
         "EURUSD", "M5", baseline_inputs(), MockBroker("EURUSD")
     )
     assert replay.fill_model == "OHLC_PATH_IDEALIZED_NO_SLIPPAGE"
+
+
+def test_replay_declares_bar_constant_spread_model():
+    replay = CycleTheoryHistoricalReplay(
+        "EURUSD", "M5", baseline_inputs(), MockBroker("EURUSD")
+    )
+    assert replay.spread_model == "BAR_SPREAD_CONSTANT_WITHIN_OHLC_PATH"
