@@ -56,3 +56,30 @@ def test_tick_replay_does_not_fabricate_missing_bar_ticks():
     )
     result = replay.run_ticks(bars, ticks)
     assert result.evaluation_bars == 9
+
+
+def test_tick_replay_rejects_timezone_aware_tick_without_server_time_contract():
+    from datetime import timezone
+    bars = _bars()
+    ticks = _ticks(bars)
+    aware = ReplayTick(ticks[bars[0].time][0].time.replace(tzinfo=timezone.utc), 1.1, 1.1002)
+    ticks[bars[0].time][0] = aware
+    replay = CycleTheoryTickHistoricalReplay("EURUSD", "M1", baseline_inputs(), MockBroker("EURUSD"))
+    try:
+        replay.run_ticks(bars, ticks)
+    except ValueError as exc:
+        assert "server time" in str(exc).lower()
+    else:
+        raise AssertionError("timezone-aware tick was silently accepted")
+
+
+def test_tick_replay_rejects_inverted_bid_ask():
+    bars = _bars(); ticks = _ticks(bars)
+    ticks[bars[0].time][0] = ReplayTick(ticks[bars[0].time][0].time, 1.1003, 1.1002)
+    replay = CycleTheoryTickHistoricalReplay("EURUSD", "M1", baseline_inputs(), MockBroker("EURUSD"))
+    try:
+        replay.run_ticks(bars, ticks)
+    except ValueError as exc:
+        assert "ask" in str(exc).lower()
+    else:
+        raise AssertionError("inverted bid/ask was silently accepted")

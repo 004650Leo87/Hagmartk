@@ -10,7 +10,7 @@ from datetime import datetime
 from typing import Mapping, Sequence
 
 from .broker import Candle, PositionType
-from .historical_replay import CycleTheoryHistoricalReplay, ReplayBar, ReplayResult, _atr
+from .historical_replay import CycleTheoryHistoricalReplay, ReplayBar, ReplayResult, _atr, _datetime
 
 
 @dataclass(frozen=True)
@@ -32,6 +32,16 @@ class CycleTheoryTickHistoricalReplay(CycleTheoryHistoricalReplay):
         ordered = sorted(bars, key=lambda item: item.time)
         if len(ordered) < 10:
             raise ValueError("Replay requires at least 10 candles.")
+
+        # Tick-backed replay removes the OHLC path assumption, but it must not
+        # silently reinterpret MT5 UTC epochs as V111 broker-server wall time.
+        for bar in ordered:
+            _datetime(bar.time)
+        for tick_group in ticks_by_bar.values():
+            for tick in tick_group:
+                _datetime(tick.time)
+                if tick.ask < tick.bid:
+                    raise ValueError("Replay tick ask must be greater than or equal to bid.")
 
         self.adapter.power_on()
         eval_first = None
