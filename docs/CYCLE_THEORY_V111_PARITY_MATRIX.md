@@ -13,7 +13,7 @@ No optimization, performance claim, or production promotion is allowed until all
 |---|---|---|---|---|
 | OnTick ordering | 1783-1817 | `research_adapter.py::on_tick` | PROVEN | Control-flow order matches source: time gate → hard stop → active trade management → closure/capital/signal. |
 | Lot normalization | 272-311 | `execution_model.py::calc_lot` | PROVEN | Fixed/auto-balance, volume step/min/max and BUY-side margin quirk preserved. |
-| Margin calculation | 293 | `execution_model.py::_calc_margin_buy` | PARTIAL | Synthetic fixed-rate fallback removed. Explicit broker margin result is honored; unavailable calculation follows MQ5 failure branch. Real MT5 contract calculation still needs evidence. |
+| Margin calculation | 293 | `execution_model.py::_calc_margin_buy` + `mt5_margin_evidence.py` | PROVEN | Gate 3N captured live calculation-only MT5 evidence via `order_calc_margin(ORDER_TYPE_BUY, EURUSD, 1.0, Ask)` with no `order_send`: Ask 1.15824 -> USD 231.65 margin on 1:500 account. Python model already honors explicit broker margin and preserves the BUY-side quirk. |
 | Market entry side | 1376-1410 | `execution_model.py` | PROVEN | BUY uses Ask; SELL uses Bid. |
 | Limit submission | 1379/1410 | `execution_model.py` + `broker.py` | PROVEN | Submitted limit price/volume preserved by current broker model. |
 | Pending fill trigger | MT5 engine | `tick_execution.py` | MODELLED | BUY_LIMIT Ask<=price; SELL_LIMIT Bid>=price. Gate 3K additionally proves that the current research harness fills a gap-through limit at the submitted limit price. This is an explicit model contract, not MT5 parity; real tick/deal evidence is still required. |
