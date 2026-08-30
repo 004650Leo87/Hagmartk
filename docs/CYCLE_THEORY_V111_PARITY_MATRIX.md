@@ -17,7 +17,7 @@ No optimization, performance claim, or production promotion is allowed until all
 | Market entry side | 1376-1410 | `execution_model.py` | PROVEN | BUY uses Ask; SELL uses Bid. |
 | Limit submission | 1379/1410 | `execution_model.py` + `broker.py` | PROVEN | Submitted limit price/volume preserved by current broker model. |
 | Pending fill trigger | MT5 engine | `tick_execution.py` | MODELLED | BUY_LIMIT Ask<=price; SELL_LIMIT Bid>=price. Gate 3K additionally proves that the current research harness fills a gap-through limit at the submitted limit price. This is an explicit model contract, not MT5 parity; real tick/deal evidence is still required. |
-| Spread gate | strategy entry functions | `signal_engine.py` | PARTIAL | Strategy checks spread; replay reconstructs Ask from historical/default spread. Historical spread quality remains data-dependent. |
+| Spread gate | strategy entry functions | `signal_engine.py` | PROVEN | Gate 3N confirms source and Python use spread in integer symbol points with the same strict `> InpMaxSpread` gate, including the Expansion phase-1 quirk that does not gate spread until phase 2. Live MT5 evidence also confirmed `SYMBOL_SPREAD=4` equals `(Ask-Bid)/Point=4` on EURUSD. Historical replay spread quality remains a separate data-quality limitation, not a strategy-logic parity gap. |
 | Stops/freeze validation | 412-441 | `position_manager.py::pode_modificar` | PROVEN | Minimum distance logic mirrors source. |
 | Partial exits | 1200-1264 | `position_manager.py::manage_partials` | PROVEN | Ordering, one-time volume read and minimum-volume quirks intentionally preserved. |
 | Final TP sync | 1051+ | `position_manager.py::sync_target_and_visuals` | PROVEN | Expansion target and smart buffer logic mirrored. |
