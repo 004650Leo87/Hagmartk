@@ -18,7 +18,7 @@ if ($busy.Count -gt 0) {
     throw "Porta(s) HAGMARTK ocupada(s): $($busy -join ', '). Nada foi iniciado."
 }
 
-$backendCommand = "Set-Location '$root'; `$env:HAGMARTK_AUTOSTART='1'; `$env:HAGMARTK_CORS_ORIGINS='http://127.0.0.1:$frontendPort,http://localhost:$frontendPort'; python -m uvicorn backend.api.app:app --host 127.0.0.1 --port $backendPort"
+$backendCommand = "Set-Location '$root'; `$env:HAGMARTK_AUTOSTART='1'; `$env:HAGMARTK_MARKET_ADAPTER='mt5'; `$env:HAGMARTK_CORS_ORIGINS='http://127.0.0.1:$frontendPort,http://localhost:$frontendPort'; python -m uvicorn backend.api.app:app --host 127.0.0.1 --port $backendPort"
 $frontendCommand = "Set-Location '$root\frontend'; `$env:VITE_API_URL='$apiUrl'; npm run dev -- --host 127.0.0.1 --port $frontendPort --strictPort"
 
 Start-Process powershell -ArgumentList '-NoExit','-NoProfile','-Command',$backendCommand -WindowStyle Normal

@@ -16,6 +16,8 @@ Design notes:
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
+import json
+from pathlib import Path
 from datetime import datetime, timezone
 
 from .market_adapter import MarketAdapter
@@ -39,6 +41,14 @@ class MT5MarketAdapter(MarketAdapter):
 
     def __init__(self) -> None:
         self._connected = False
+        self._runtime_scope = self._load_runtime_scope()
+
+    @staticmethod
+    def _load_runtime_scope() -> Dict[str, Any]:
+        scope_path = Path(__file__).resolve().parents[3] / "config" / "mt5_runtime_scope.json"
+        if not scope_path.exists():
+            return {}
+        return json.loads(scope_path.read_text(encoding="utf-8"))
 
     def _load_mt5(self):
         try:
@@ -58,7 +68,17 @@ class MT5MarketAdapter(MarketAdapter):
         if self._connected:
             return
 
-        if mt5.initialize():
+        terminal_path = self._runtime_scope.get("terminal_executable")
+        initialized = mt5.initialize(path=terminal_path) if terminal_path else mt5.initialize()
+        if initialized:
+            expected_server = self._runtime_scope.get("server")
+            account = mt5.account_info()
+            observed_server = getattr(account, "server", None) if account is not None else None
+            if expected_server and observed_server != expected_server:
+                mt5.shutdown()
+                raise AdapterConnectionError(
+                    f"MT5 runtime scope mismatch: expected server {expected_server!r}, observed {observed_server!r}"
+                )
             self._connected = True
             return
 

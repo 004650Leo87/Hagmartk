@@ -39,11 +39,14 @@ def make_fake_mt5_module():
     def last_error():
         return fake._last_error
 
-    def initialize():
+    def initialize(*args, **kwargs):
         return True
 
     def shutdown():
         return True
+
+    def account_info():
+        return types.SimpleNamespace(server="Tickmill-Live")
 
     def symbols_get():
         # return objects with a `name` attribute
@@ -94,6 +97,7 @@ def make_fake_mt5_module():
     fake.last_error = last_error
     fake.initialize = initialize
     fake.shutdown = shutdown
+    fake.account_info = account_info
     fake.symbols_get = symbols_get
     fake.symbol_info = symbol_info
     fake.symbol_info_tick = symbol_info_tick

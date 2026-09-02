@@ -40,3 +40,15 @@ Operational status display was audited against live contracts.
 - The bottom Positions/Orders/History/Logs drawer was removed from the visible product surface because its contents were static statements, not live broker-backed data. The compact truthful status strip remains.
 
 Decision: no operational fact may be inferred from a different subsystem's status, and no empty/static drawer may impersonate a live capability.
+
+## Runtime truth correction — scoped MT5 launcher
+The dedicated HAGMARTK MF launcher previously allowed backend startup without an explicit market-adapter mode, which permitted the runtime to come up on the mock adapter despite the frozen MT5 runtime scope.
+
+Correction:
+- `START_HAGMARTK_MF.ps1` now explicitly sets `HAGMARTK_MARKET_ADAPTER=mt5`.
+- `MT5MarketAdapter` loads `config/mt5_runtime_scope.json` and initializes the scoped terminal executable directly.
+- Adapter connection rejects a server mismatch instead of silently accepting another installed MT5 runtime.
+- Read-only validation observed Pepperstone Group Limited, build 6140, 117 symbols, with the frozen Tickmill-Live server scope.
+- Full suite after correction: 386 passed, 1 skipped, 0 failed.
+
+This converts MT5 identity from an environmental assumption into an enforced runtime contract.
