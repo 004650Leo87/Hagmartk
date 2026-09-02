@@ -13,7 +13,8 @@ export default function ContextPanel({
   shadowData,
   indicators,
   onToggleIndicator,
-  systemStatus = 'ONLINE',
+  systemStatus = 'UNKNOWN',
+  systemHealth = null,
   operationalCount = 33,
   totalCount = 39,
 }) {
@@ -219,7 +220,7 @@ export default function ContextPanel({
               <div className="hk-sys-item">
                 <span className="hk-sys-label">MetaTrader 5 Adapter</span>
                 <span className={`hk-sys-status ${systemStatus === 'ONLINE' ? 'green' : 'red'}`}>
-                  {systemStatus === 'ONLINE' ? 'CONECTADO (Tickmill Live)' : 'DESCONECTADO'}
+                  {systemStatus === 'ONLINE' ? `CONECTADO${systemHealth?.broker_name ? ` (${systemHealth.broker_name})` : ''}` : 'DESCONECTADO'}
                 </span>
               </div>
               <div className="hk-sys-item">
@@ -232,7 +233,7 @@ export default function ContextPanel({
               </div>
               <div className="hk-sys-item">
                 <span className="hk-sys-label">FastAPI Engine</span>
-                <span className="hk-sys-status green">HTTP 200 OK (0.001ms)</span>
+                <span className="hk-sys-status green">{systemHealth ? `RESPONDENDO${Number.isFinite(systemHealth.latency_ms) ? ` • ${systemHealth.latency_ms.toFixed(2)} ms leitura de símbolos` : ''}` : 'INDISPONÍVEL'}</span>
               </div>
             </div>
           </div>

@@ -12,6 +12,7 @@ export default function TopCommandBar({
   onToggleAlerts,
   alertCount,
   systemStatus,
+  systemHealth,
   theme,
   onToggleTheme,
   isZenMode,
@@ -204,7 +205,7 @@ export default function TopCommandBar({
               <div className="hk-popover-body">
                 <div className="hk-popover-row">
                   <span className="hk-popover-label">MetaTrader 5:</span>
-                  <span className="hk-popover-val green">{isOnline ? 'Conectado (Tickmill Live)' : 'Desconectado'}</span>
+                  <span className="hk-popover-val green">{isOnline ? `Conectado${systemHealth?.broker_name ? ` (${systemHealth.broker_name})` : ''}` : 'Desconectado'}</span>
                 </div>
                 <div className="hk-popover-row">
                   <span className="hk-popover-label">Universo Sombra:</span>
@@ -216,7 +217,7 @@ export default function TopCommandBar({
                 </div>
                 <div className="hk-popover-row">
                   <span className="hk-popover-label">Backend API:</span>
-                  <span className="hk-popover-val green">HTTP 200 OK (0.001ms)</span>
+                  <span className="hk-popover-val green">{systemHealth ? `RESPONDENDO${Number.isFinite(systemHealth.latency_ms) ? ` • ${systemHealth.latency_ms.toFixed(2)} ms leitura de símbolos` : ''}` : 'INDISPONÍVEL'}</span>
                 </div>
               </div>
             </div>

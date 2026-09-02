@@ -30,3 +30,13 @@ This is a No Fake UI correction: the underlying views remain intact, but duplica
 KEEP pending registry completion: symbol selector, timeframe selector, HDF evidence trigger, RSI visibility, Shadow alert drawer, system/MT5 diagnostics. These are wired to real state/data flows.
 PRESENTATION ONLY: theme and Zen mode are local UI preferences; they do not count as market-intelligence capabilities and require no backend promotion.
 FOLLOW-UP REQUIRED: diagnostics popover contains literal presentation strings (including latency/status text) that must be checked against live telemetry before being allowed to represent observed facts.
+
+## Third-pass correction — truth layer
+Operational status display was audited against live contracts.
+- System health no longer starts as `ONLINE`; initial state is `UNKNOWN` until `/system/health` responds.
+- MT5 connectivity is derived only from `adapter_connected` / `terminal_status` from the health endpoint.
+- Broker/company label is displayed only when returned by live health telemetry.
+- The fabricated `HTTP 200 OK (0.001ms)` text was removed. The UI now shows API availability from the successful health payload and displays measured `latency_ms` only as the backend's symbol-read latency, with an explicit label.
+- The bottom Positions/Orders/History/Logs drawer was removed from the visible product surface because its contents were static statements, not live broker-backed data. The compact truthful status strip remains.
+
+Decision: no operational fact may be inferred from a different subsystem's status, and no empty/static drawer may impersonate a live capability.

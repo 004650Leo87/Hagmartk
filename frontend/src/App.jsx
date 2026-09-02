@@ -84,7 +84,8 @@ export default function App() {
   // Data States
   const [watchlistData, setWatchlistData] = useState([]);
   const [shadowEvents, setShadowEvents] = useState([]);
-  const [systemStatus, setSystemStatus] = useState('ONLINE');
+  const [systemStatus, setSystemStatus] = useState('UNKNOWN');
+  const [systemHealth, setSystemHealth] = useState(null);
   const [activeEvidence, setActiveEvidence] = useState(null);
   const [operationalCount, setOperationalCount] = useState(39);
 
@@ -128,10 +129,12 @@ export default function App() {
 
       try {
         const health = await getSystemHealth();
-        const isOnline = health?.adapter_connected || health?.terminal_status || health?.status === 'ok';
+        setSystemHealth(health);
+        const isOnline = Boolean(health?.adapter_connected || health?.terminal_status);
         setSystemStatus(isOnline ? 'ONLINE' : 'DEGRADED');
       } catch (err) {
         console.error('Erro ao carregar saúde do sistema:', err);
+        setSystemHealth(null);
         setSystemStatus('DEGRADED');
       }
 
@@ -223,6 +226,7 @@ export default function App() {
             onToggleAlerts={() => setIsAlertsOpen(true)}
             alertCount={shadowEvents.length}
             systemStatus={systemStatus}
+            systemHealth={systemHealth}
             theme={theme}
             onToggleTheme={handleToggleTheme}
             isZenMode={isZenMode}
@@ -354,6 +358,7 @@ export default function App() {
                 indicators={indicators}
                 onToggleIndicator={handleToggleIndicator}
                 systemStatus={systemStatus}
+                systemHealth={systemHealth}
                 operationalCount={operationalCount}
                 totalCount={39}
               />
