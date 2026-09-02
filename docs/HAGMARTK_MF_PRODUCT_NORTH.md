@@ -84,3 +84,6 @@ This document defines the product north. UI redesign, new capabilities and distr
 For HAGMARTK MF, MT5 evidence and read-only integration are scoped to the currently authenticated Pepperstone terminal runtime whose data path is `73B7A2420D6397DFF9014A20F1201F97` and server is `Tickmill-Live`.
 Other installed or running MT5 terminals are out of project scope and must not be queried, restarted, configured, or treated as evidence sources.
 This scope does not authorize live order submission, cancellation, or position modification.
+
+## Fidelity gate decision — 2026-09-02
+Cycle Theory V111 reached the current safe read-only fidelity boundary. Remaining execution-sensitive gaps stay explicitly PARTIAL/MODELLED and do not authorize profitability claims or real trading. Product work may proceed to Capability Registry/dashboard inventory while V111 remains research/validation and frozen HDF remains unchanged. See docs/CYCLE_THEORY_V111_FIDELITY_BOUNDARY_2026-09-02.md.
