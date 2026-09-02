@@ -11,9 +11,6 @@ export default function LeftNavigation({
     { id: 'watchlist', label: 'Mercado / Ativos', icon: '⌁' },
     { id: 'shadow', label: 'Shadow Monitor (39)', icon: '🛡️' },
     { id: 'strategies', label: 'Estratégia HDF', icon: '◇' },
-    { id: 'backtest', label: 'Backtest Lab', icon: '↻' },
-    { id: 'ai', label: 'IA Hagmartk', icon: '🤖' },
-    { id: 'automation', label: 'Automação / Safety', icon: '⚡' },
     { id: 'alerts', label: 'Centro de Alertas', icon: '🔔' },
     { id: 'settings', label: 'Configurações', icon: '⚙' },
   ];
