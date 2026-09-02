@@ -1,0 +1,8 @@
+{
+  "terminal_executable": "C:\\Program Files\\Pepperstone MetaTrader 5\\terminal64.exe",
+  "data_path": "C:\\Users\\55819\\AppData\\Roaming\\MetaQuotes\\Terminal\\73B7A2420D6397DFF9014A20F1201F97",
+  "server": "Tickmill-Live",
+  "scope": "HAGMARTK_MF_ONLY",
+  "ignored_terminals": ["Doo Technology MetaTrader 5"],
+  "real_order_execution_enabled": false
+}

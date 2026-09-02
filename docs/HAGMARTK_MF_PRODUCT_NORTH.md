@@ -79,3 +79,8 @@ This document defines the product north. UI redesign, new capabilities and distr
 - HDF/DVP remains a frozen quantitative candidate family and must not be casually changed.
 - Cycle Theory V111 remains research-only until the remaining fidelity/parity gates are bounded or proven.
 - Additional named methods, including DIVAP, enter only after their exact public/source rules can be recovered and versioned without invention.
+
+## MT5 runtime scope
+For HAGMARTK MF, MT5 evidence and read-only integration are scoped to the currently authenticated Pepperstone terminal runtime whose data path is `73B7A2420D6397DFF9014A20F1201F97` and server is `Tickmill-Live`.
+Other installed or running MT5 terminals are out of project scope and must not be queried, restarted, configured, or treated as evidence sources.
+This scope does not authorize live order submission, cancellation, or position modification.
