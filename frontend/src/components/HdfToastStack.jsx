@@ -2,7 +2,7 @@ import { createPortal } from 'react-dom';
 import { useEffect, useRef } from 'react';
 
 const TOAST_STATES_WITH_NOTIFICATION = new Set([
-  'ARMED', 'ACTIVATED', 'TARGET_2R', 'STOPPED', 'MILESTONE_1R'
+  'HDF_DVP', 'ARMED', 'ACTIVATED', 'TARGET_2R', 'STOPPED', 'MILESTONE_1R'
 ]);
 
 const DIRECTION_LABELS = {
@@ -11,6 +11,7 @@ const DIRECTION_LABELS = {
 };
 
 const STATE_LABELS = {
+  HDF_DVP: 'EVIDÊNCIA HDF_DVP CONFIRMADA',
   ARMED: 'CONFIGURAÇÃO ARMADA',
   ACTIVATED: 'ATIVAÇÃO OBSERVADA',
   TARGET_2R: 'OBJETIVO 2R ATINGIDO',
@@ -51,6 +52,9 @@ function HdfToast({ toast, onDismiss, onNavigate }) {
 
       <div className="hdf-toast-body">
         <span className="hdf-toast-state">{stateLabel}</span>
+        {toast.status_code === 'HDF_DVP' && (
+          <span className="hdf-toast-time">Vol {Number(toast.relative_volume || 0).toFixed(2)}x • {toast.pattern_type || 'Padrão confirmado'}</span>
+        )}
         {toast.event_time && (
           <span className="hdf-toast-time">{new Date(toast.event_time).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</span>
         )}

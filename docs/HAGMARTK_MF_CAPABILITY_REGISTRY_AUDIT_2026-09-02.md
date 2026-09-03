@@ -52,3 +52,15 @@ Correction:
 - Full suite after correction: 386 passed, 1 skipped, 0 failed.
 
 This converts MT5 identity from an environmental assumption into an enforced runtime contract.
+
+## HDF visibility chain correction — 2026-09-02
+- Root cause confirmed: LIVE_PROSPECTIVE HDFEvidence was persisted independently, while visible ShadowEvent generation only occurred for later operational states such as ARMED/ACTIVATED/terminal states.
+- `HdfToastStack.jsx` existed but was not mounted anywhere in `App.jsx`, so no popup could ever be shown.
+- AlertCenterDrawer fetched evidence only for the currently selected symbol/timeframe, hiding valid evidence detected elsewhere in the 39-combination universe.
+- Frontend now polls `/api/shadow/evidence/recent` globally and keeps TEST evidence excluded.
+- Existing evidence is treated as baseline and is not replayed as a new notification when the dashboard opens.
+- New LIVE_PROSPECTIVE `HDF_DVP` evidence detected after baseline generates a real toast with source characteristics and navigation to evidence/chart.
+- The alert counter now includes real HDF_DVP evidence plus operational Shadow events.
+- Centro HDF now receives the global live evidence list instead of querying only the current chart symbol/timeframe.
+- This does not relabel HDF_DVP as ARMED/ACTIVATED: evidence formation and operational lifecycle remain distinct.
+- Validation: frontend build PASS; lint 0 errors / 13 warnings; git diff --check PASS.

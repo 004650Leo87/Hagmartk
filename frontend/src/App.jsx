@@ -1,4 +1,4 @@
-import React, { Component, useEffect, useState } from 'react';
+import React, { Component, useEffect, useRef, useState } from 'react';
 import './App.css';
 import TopCommandBar from './components/TopCommandBar';
 import LeftNavigation from './components/LeftNavigation';
@@ -12,11 +12,13 @@ import BacktestView from './components/BacktestView';
 import AiInsightsView from './components/AiInsightsView';
 import AutomationSafetyView from './components/AutomationSafetyView';
 import AlertCenterDrawer from './components/AlertCenterDrawer';
+import HdfToastStack from './components/HdfToastStack';
 import SymbolSearchModal from './components/SymbolSearchModal';
 import IndicatorManagerModal from './components/IndicatorManagerModal';
 
 import {
   getShadowRecentEvents,
+  getHDFRecentEvidences,
   getShadowScanners,
   getSystemHealth,
   getWatchlist,
@@ -84,6 +86,10 @@ export default function App() {
   // Data States
   const [watchlistData, setWatchlistData] = useState([]);
   const [shadowEvents, setShadowEvents] = useState([]);
+  const [hdfEvidences, setHdfEvidences] = useState([]);
+  const [hdfToasts, setHdfToasts] = useState([]);
+  const seenEvidenceIdsRef = useRef(new Set());
+  const evidenceBaselineLoadedRef = useRef(false);
   const [systemStatus, setSystemStatus] = useState('UNKNOWN');
   const [systemHealth, setSystemHealth] = useState(null);
   const [activeEvidence, setActiveEvidence] = useState(null);
@@ -153,6 +159,28 @@ export default function App() {
         setShadowEvents(recent?.toast_events || recent?.events || []);
       } catch (err) {
         console.error('Erro ao carregar eventos Shadow:', err);
+      }
+
+      try {
+        const recentEvidence = await getHDFRecentEvidences(100);
+        const live = (recentEvidence?.evidences || []).filter((ev) => !ev.is_test);
+        setHdfEvidences(live);
+
+        const currentIds = new Set(live.map((ev) => ev.evidence_id));
+        if (evidenceBaselineLoadedRef.current) {
+          const newDvp = live.filter((ev) => ev.variant_stage === 'HDF_DVP' && !seenEvidenceIdsRef.current.has(ev.evidence_id));
+          if (newDvp.length) {
+            setHdfToasts((prev) => [
+              ...newDvp.map((ev) => ({ ...ev, id: ev.evidence_id, status_code: 'HDF_DVP', event_time: ev.detected_at || ev.created_at })),
+              ...prev,
+            ].slice(0, 8));
+          }
+        } else {
+          evidenceBaselineLoadedRef.current = true;
+        }
+        seenEvidenceIdsRef.current = currentIds;
+      } catch (err) {
+        console.error('Erro ao carregar evidências HDF:', err);
       }
     }
     loadData();
@@ -224,7 +252,7 @@ export default function App() {
             showRSI={showRSI}
             onToggleRSI={() => setShowRSI((prev) => !prev)}
             onToggleAlerts={() => setIsAlertsOpen(true)}
-            alertCount={shadowEvents.length}
+            alertCount={shadowEvents.length + hdfEvidences.filter((ev) => ev.variant_stage === 'HDF_DVP').length}
             systemStatus={systemStatus}
             systemHealth={systemHealth}
             theme={theme}
@@ -398,13 +426,25 @@ export default function App() {
           />
         )}
 
+        <HdfToastStack
+          toasts={hdfToasts}
+          onDismiss={(id) => setHdfToasts((prev) => prev.filter((item) => item.id !== id))}
+          onNavigate={(ev) => {
+            if (ev.symbol) setSymbol(ev.symbol);
+            if (ev.timeframe) setTimeframe(ev.timeframe);
+            setActiveEvidence(ev);
+            setContextMode('evidence');
+            setIsContextOpen(true);
+            setActiveTab('chart');
+          }}
+        />
+
         <AlertCenterDrawer
           isOpen={isAlertsOpen}
           onClose={() => setIsAlertsOpen(false)}
           events={shadowEvents}
+          evidences={hdfEvidences}
           selectedEventId={activeEvidence?.evidence_id || activeEvidence?.event_id || activeEvidence?.id}
-          currentSymbol={symbol}
-          currentTimeframe={timeframe}
           onSelectEvent={(evt) => {
             if (evt.symbol) setSymbol(evt.symbol);
             if (evt.timeframe) setTimeframe(evt.timeframe);

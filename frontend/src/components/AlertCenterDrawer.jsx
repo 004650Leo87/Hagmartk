@@ -1,38 +1,16 @@
-import React, { useState, useEffect } from 'react';
-import { getHDFEvidences } from '../services/api';
+import React, { useState } from 'react';
 
 export default function AlertCenterDrawer({
   isOpen,
   onClose,
   events = [],
+  evidences = [],
   onSelectEvent,
   selectedEventId,
-  currentSymbol,
-  currentTimeframe,
 }) {
   const [activeTab, setActiveTab] = useState('EVIDENCIAS'); // 'EVIDENCIAS' | 'EVENTOS'
-  const [evidences, setEvidences] = useState([]);
   const [evidenceFilter, setEvidenceFilter] = useState('TODOS');
   const [eventFilter, setEventFilter] = useState('TODOS');
-  const [loadingEvidences, setLoadingEvidences] = useState(false);
-
-  useEffect(() => {
-    if (!isOpen) return;
-
-    async function loadLiveEvidences() {
-      try {
-        setLoadingEvidences(true);
-        const res = await getHDFEvidences(currentSymbol || 'XAUUSD', currentTimeframe || 'H1');
-        setEvidences(res?.evidences || []);
-      } catch (err) {
-        console.error('Erro ao carregar HDFEvidences:', err);
-      } finally {
-        setLoadingEvidences(false);
-      }
-    }
-
-    loadLiveEvidences();
-  }, [isOpen, currentSymbol, currentTimeframe]);
 
   if (!isOpen) return null;
 
@@ -126,11 +104,9 @@ export default function AlertCenterDrawer({
       {/* Content Body */}
       <div className="hk-drawer-body">
         {activeTab === 'EVIDENCIAS' ? (
-          loadingEvidences ? (
-            <div className="hk-empty">Carregando evidências HDF live...</div>
-          ) : filteredEvidences.length === 0 ? (
+          filteredEvidences.length === 0 ? (
             <div className="hk-empty">
-              Nenhuma evidência HDF real registrada para {currentSymbol} ({currentTimeframe}).
+              Nenhuma evidência HDF real registrada no radar global.
             </div>
           ) : (
             filteredEvidences.map((ev, idx) => {

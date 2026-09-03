@@ -261,6 +261,10 @@ export async function getShadowRecentEvents(n = 20) {
   return apiRequest(`/api/shadow/events/recent?n=${n}`);
 }
 
+export async function getHDFRecentEvidences(limit = 100) {
+  return apiRequest(`/api/shadow/evidence/recent?limit=${limit}`);
+}
+
 export async function getShadowEventsPage(limit = 20, offset = 0) {
   return apiRequest(`/api/shadow/events?limit=${limit}&offset=${offset}`);
 }
