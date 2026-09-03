@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, Iterable
+from typing import Dict, Iterable, Sequence
 
 
 SOURCE_LEVELS = (0.618, 1.0, 1.618, 2.0, 2.618)
@@ -12,6 +12,7 @@ class FibonacciAuditStatus(str, Enum):
     PASS = "PASS"
     FAIL = "FAIL"
     ANCHOR_UNRESOLVED = "ANCHOR_UNRESOLVED"
+    AMBIGUOUS = "AMBIGUOUS"
 
 
 @dataclass(frozen=True)
