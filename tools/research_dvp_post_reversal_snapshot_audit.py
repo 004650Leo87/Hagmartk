@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
+import argparse
 import json
 import sys
 
@@ -37,7 +38,7 @@ def level_outcome(df, entry_index, direction, target, stop):
     return "CENSORED", None
 
 
-def main():
+def capture_snapshot():
     adapter = MT5MarketAdapter()
     frames = []
     adapter.connect()
@@ -61,9 +62,25 @@ def main():
         "requested_candles_per_pair": 1200,
         "rows": len(snapshot_df),
     }, indent=2), encoding="utf-8")
+    return snapshot_df, "CAPTURED"
 
+
+def load_snapshot(refresh=False):
+    if refresh or not SNAPSHOT.exists():
+        return capture_snapshot()
+    snapshot_df = pd.read_csv(SNAPSHOT)
+    return snapshot_df, "REUSED"
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--refresh", action="store_true", help="capture a new rolling MT5 snapshot")
+    args = parser.parse_args()
+
+    snapshot_df, snapshot_mode = load_snapshot(refresh=args.refresh)
     rows = []
     eligible_events = 0
+
     for symbol in SYMBOLS:
         for timeframe in TIMEFRAMES:
             df = snapshot_df[(snapshot_df.snapshot_symbol == symbol) & (snapshot_df.snapshot_timeframe == timeframe)].copy()
@@ -94,7 +111,6 @@ def main():
                 anchor_a, anchor_b = ((pattern_low, pattern_high) if occ.direction == "BULLISH" else (pattern_high, pattern_low))
                 targets = mirrored_extension_levels(anchor_a, anchor_b)
                 entry, stop, risk = float(occ.entry_price), float(occ.initial_stop), float(occ.initial_risk)
-
                 for level in SOURCE_LEVELS:
                     target = float(targets[level])
                     ahead = target > entry if occ.direction == "BULLISH" else target < entry
@@ -105,6 +121,7 @@ def main():
                     target_r = abs(target - entry) / risk
                     rows.append((symbol,timeframe,level,outcome,bars,target_r))
 
+    print("SNAPSHOT_MODE", snapshot_mode)
     print("SNAPSHOT", SNAPSHOT)
     print("SNAPSHOT_ROWS", len(snapshot_df))
     print("ELIGIBLE_EVENTS", eligible_events)

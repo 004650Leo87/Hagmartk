@@ -97,3 +97,11 @@ This equivalence is conditional. It follows because the current default entry/st
 
 Canonical reproduction: `python tools/research_dvp_post_reversal_snapshot_audit.py`.
 The frozen raw snapshot is stored under `data_cache/` and intentionally remains outside version control.
+
+## Reproducibility hardening
+
+The canonical audit now reuses the frozen snapshot by default. A normal run must report `SNAPSHOT_MODE REUSED` and reproduce the same cohort/results. A new rolling market capture is explicit only through:
+
+`python tools/research_dvp_post_reversal_snapshot_audit.py --refresh`
+
+This prevents accidental sample drift during sequential comparisons.
