@@ -64,7 +64,7 @@ class HDFStrategy(BaseStrategy):
         self.name = f"Hagmartk Divergence Flow — {var_clean}"
         self.version = "1.0.0"
         self.description = "Motor de pesquisa quantitativa Hagmartk Divergence Flow (HDF)"
-        self.allowed_timeframes = ["M15", "H1", "H4", "D1"]
+        self.allowed_timeframes = ["M5", "M15", "M30", "H1", "H2", "H4", "D1", "W1"]
         self.max_concurrent_positions_per_symbol = 1
 
         self.rsi_period = rsi_period

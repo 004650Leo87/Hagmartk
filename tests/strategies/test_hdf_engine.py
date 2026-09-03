@@ -272,3 +272,10 @@ def test_audit_naming_and_legacy_alias():
     strat_old = DIVAPStrategy(variant="DIVAP_DVP")
     assert strat_new.strategy_id == strat_old.strategy_id
     assert issubclass(DIVAPStrategy, HDFStrategy)
+
+
+def test_hdf_scope_uses_only_level_1_divergence_and_frozen_timeframes():
+    strategy = HDFStrategy(variant="HDF_DVP")
+    assert strategy.allowed_timeframes == ["M5", "M15", "M30", "H1", "H2", "H4", "D1", "W1"]
+    assert strategy.div_detector.check_bearish_divergence.__doc__.startswith("Bearish Divergence")
+    assert strategy.div_detector.check_bullish_divergence.__doc__.startswith("Bullish Divergence")
