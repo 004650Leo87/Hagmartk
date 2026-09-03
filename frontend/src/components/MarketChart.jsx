@@ -32,6 +32,31 @@ import {
 
 const HISTORY_PAGE_SIZE = 500;
 
+function parseEvidenceTimestamp(value) {
+    if (!value) return 0;
+    if (typeof value === 'number') return value;
+    let normalized = String(value).trim().replace(' ', 'T');
+    if (!normalized.endsWith('Z') && !/[+-]\d{2}:\d{2}$/.test(normalized)) normalized += 'Z';
+    const parsed = new Date(normalized);
+    return Number.isNaN(parsed.getTime()) ? 0 : Math.floor(parsed.getTime() / 1000);
+}
+
+function applyHdfConfirmationColors(candles, evidences) {
+    const byTime = new Map();
+    for (const ev of evidences || []) {
+        if (ev?.is_test || ev?.source === 'TEST' || ev?.variant_stage !== 'HDF_DVP') continue;
+        const time = parseEvidenceTimestamp(ev.detected_at);
+        if (!time) continue;
+        byTime.set(time, ev.direction === 'BULLISH' ? 'BULLISH' : 'BEARISH');
+    }
+    return (candles || []).map((candle) => {
+        const direction = byTime.get(candle.time);
+        if (!direction) return candle;
+        const highlight = direction === 'BULLISH' ? '#ffffff' : '#ffd84d';
+        return { ...candle, color: highlight, borderColor: highlight, wickColor: highlight };
+    });
+}
+
 function MarketChart({
     symbol = 'XAUUSD',
     timeframe = 'H1',
@@ -430,6 +455,7 @@ useEffect(() => {
 
                 liveItems.forEach((evItem) => {
                     const refTimeStr =
+                        (evItem.variant_stage === 'HDF_DVP' ? evItem.detected_at : null) ||
                         evItem.activation_time ||
                         evItem.confluence_time ||
                         evItem.pivot_2_time ||
@@ -485,6 +511,10 @@ useEffect(() => {
 
                 if (mainSeries && typeof mainSeries.setMarkers === 'function') {
                     try { mainSeries.setMarkers(sortedMarkers); } catch { }
+                }
+
+                if (mainSeries && candles.length > 0) {
+                    mainSeries.setData(applyHdfConfirmationColors(candles, liveItems));
                 }
 
                 if (activeEvidenceData && sortedMarkers.length > 0 && chart.timeScale) {
