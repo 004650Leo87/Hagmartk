@@ -45,3 +45,16 @@ def test_returns_unresolved_without_known_leg():
     result = audit_latest_completed_leg(direction="BULLISH", pivots=[p(5, 110, True)], decision_index=10,
                                         candle_low=100, candle_high=120)
     assert result.status == "UNRESOLVED"
+
+
+def test_strict_pre_reversal_never_uses_p2_or_later_pivot():
+    from backend.strategies.hdf.prospective_fibonacci import select_strict_pre_reversal_leg
+    pivots = [ConfirmedPivot(2, 100, False, 4), ConfirmedPivot(5, 110, True, 7), ConfirmedPivot(8, 98, False, 10), ConfirmedPivot(11, 112, True, 13)]
+    a, b = select_strict_pre_reversal_leg(direction="BULLISH", pivots=pivots, decision_index=14, reversal_pivot_index=8)
+    assert (a.index, b.index) == (2, 5)
+    assert b.index < 8
+
+def test_strict_pre_reversal_ignores_future_confirmed_information():
+    from backend.strategies.hdf.prospective_fibonacci import select_strict_pre_reversal_leg
+    pivots = [ConfirmedPivot(2, 100, False, 4), ConfirmedPivot(5, 110, True, 20)]
+    assert select_strict_pre_reversal_leg(direction="BULLISH", pivots=pivots, decision_index=10, reversal_pivot_index=8) == (None, None)
