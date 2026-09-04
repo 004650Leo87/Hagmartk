@@ -31,3 +31,4 @@ Thumbs.db
 .git_diff*.txt
 apply.js
 data_cache/*.db-journal
+data_cache/backups/

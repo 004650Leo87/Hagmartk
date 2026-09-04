@@ -60,11 +60,17 @@ def test_failed_check_recording(temp_store):
 
 
 def test_degraded_health_classification(temp_store):
-    # 18 sucessos e 2 falhas -> 18/20 = 90% -> DEGRADED
-    for _ in range(18):
-        temp_store.record_scanner_telemetry("hdf_dvp_exit_2r", "BTCUSD", "H1", success=True)
-    for _ in range(2):
-        temp_store.record_scanner_telemetry("hdf_dvp_exit_2r", "BTCUSD", "H1", success=False, error_code="TIMEOUT")
+    # 18 hourly slots successful and 2 hourly slots failed -> 18/20 = 90% -> DEGRADED
+    for hour in range(18):
+        temp_store.record_scanner_telemetry(
+            "hdf_dvp_exit_2r", "BTCUSD", "H1", success=True,
+            now_str=f"2026-09-03T{hour:02d}:05:00+00:00",
+        )
+    for hour in range(18, 20):
+        temp_store.record_scanner_telemetry(
+            "hdf_dvp_exit_2r", "BTCUSD", "H1", success=False, error_code="TIMEOUT",
+            now_str=f"2026-09-03T{hour:02d}:05:00+00:00",
+        )
 
     telemetry = temp_store.get_shadow_telemetry()
     comb = next(c for c in telemetry["combinations"] if c["symbol"] == "BTCUSD" and c["timeframe"] == "H1")
@@ -73,6 +79,37 @@ def test_degraded_health_classification(temp_store):
     assert comb["coverage"] == 0.90
     assert comb["health"] == "DEGRADED"
 
+
+
+def test_repeated_failure_same_slot_is_idempotent(temp_store):
+    candidate = "hdf_dvp_exit_2r"
+    temp_store.save_shadow_session(candidate, "2026-09-04T10:10:00+00:00", True)
+    for second in (1, 4, 7, 10):
+        temp_store.record_scanner_telemetry(
+            candidate, "EURUSD", "M15", success=False, error_code="MARKET_DATA_UNAVAILABLE",
+            now_str=f"2026-09-04T10:15:{second:02d}+00:00",
+        )
+    telemetry = temp_store.get_shadow_telemetry(candidate)
+    comb = next(c for c in telemetry["combinations"] if c["symbol"] == "EURUSD" and c["timeframe"] == "M15")
+    assert comb["expected_checks"] == 1
+    assert comb["failed_checks"] == 1
+
+
+def test_success_replaces_failure_in_same_slot(temp_store):
+    candidate = "hdf_dvp_exit_2r"
+    temp_store.record_scanner_telemetry(
+        candidate, "EURUSD", "H1", success=False, error_code="MARKET_DATA_UNAVAILABLE",
+        now_str="2026-09-04T10:05:00+00:00",
+    )
+    temp_store.record_scanner_telemetry(
+        candidate, "EURUSD", "H1", success=True, now_str="2026-09-04T10:06:00+00:00",
+    )
+    telemetry = temp_store.get_shadow_telemetry(candidate)
+    comb = next(c for c in telemetry["combinations"] if c["symbol"] == "EURUSD" and c["timeframe"] == "H1")
+    assert comb["expected_checks"] == 1
+    assert comb["successful_checks"] == 1
+    assert comb["failed_checks"] == 0
+    assert comb["coverage"] == 1.0
 
 def test_statistical_engine_consumes_real_telemetry(temp_store):
     # Sem telemetria: scanner_coverage é None
@@ -126,3 +163,61 @@ def test_m15_expected_checks_accept_production_naive_utc_timestamp(temp_store):
     assert comb["expected_checks"] == 1
     assert comb["successful_checks"] == 1
     assert comb["coverage"] == 1.0
+
+
+def test_telemetry_t0_excludes_pre_reset_m15_slots(temp_store):
+    candidate = "hdf_dvp_exit_2r"
+    temp_store.save_shadow_session(candidate, "2026-09-04T10:00:00+00:00", True)
+    temp_store.save_telemetry_session(candidate, "2026-09-04T10:40:00+00:00")
+    temp_store.record_scanner_telemetry(
+        candidate, "EURUSD", "M15", success=False,
+        error_code="MARKET_DATA_UNAVAILABLE", now_str="2026-09-04T10:41:00+00:00",
+    )
+    before = temp_store.get_shadow_telemetry(candidate)
+    comb = next(c for c in before["combinations"] if c["symbol"] == "EURUSD" and c["timeframe"] == "M15")
+    assert comb["expected_checks"] == 0
+    assert comb["failed_checks"] == 0
+
+    temp_store.record_scanner_telemetry(
+        candidate, "EURUSD", "M15", success=False,
+        error_code="MARKET_DATA_UNAVAILABLE", now_str="2026-09-04T10:45:01+00:00",
+    )
+    after = temp_store.get_shadow_telemetry(candidate)
+    comb = next(c for c in after["combinations"] if c["symbol"] == "EURUSD" and c["timeframe"] == "M15")
+    assert comb["expected_checks"] == 1
+    assert comb["failed_checks"] == 1
+
+
+def test_h1_and_h4_expected_slots_follow_real_boundaries(temp_store):
+    candidate = "hdf_dvp_exit_2r"
+    temp_store.save_telemetry_session(candidate, "2026-09-04T10:10:00+00:00")
+
+    temp_store.record_scanner_telemetry(
+        candidate, "USDJPY", "H1", success=False,
+        error_code="MARKET_DATA_UNAVAILABLE", now_str="2026-09-04T10:20:00+00:00",
+    )
+    temp_store.record_scanner_telemetry(
+        candidate, "USDJPY", "H4", success=False,
+        error_code="MARKET_DATA_UNAVAILABLE", now_str="2026-09-04T10:20:00+00:00",
+    )
+    telemetry = temp_store.get_shadow_telemetry(candidate)
+    h1 = next(c for c in telemetry["combinations"] if c["symbol"] == "USDJPY" and c["timeframe"] == "H1")
+    h4 = next(c for c in telemetry["combinations"] if c["symbol"] == "USDJPY" and c["timeframe"] == "H4")
+    assert h1["expected_checks"] == 0
+    assert h4["expected_checks"] == 0
+
+    temp_store.record_scanner_telemetry(
+        candidate, "USDJPY", "H1", success=False,
+        error_code="MARKET_DATA_UNAVAILABLE", now_str="2026-09-04T11:00:01+00:00",
+    )
+    temp_store.record_scanner_telemetry(
+        candidate, "USDJPY", "H4", success=False,
+        error_code="MARKET_DATA_UNAVAILABLE", now_str="2026-09-04T12:00:01+00:00",
+    )
+    telemetry = temp_store.get_shadow_telemetry(candidate)
+    h1 = next(c for c in telemetry["combinations"] if c["symbol"] == "USDJPY" and c["timeframe"] == "H1")
+    h4 = next(c for c in telemetry["combinations"] if c["symbol"] == "USDJPY" and c["timeframe"] == "H4")
+    assert h1["expected_checks"] == 1
+    assert h1["failed_checks"] == 1
+    assert h4["expected_checks"] == 1
+    assert h4["failed_checks"] == 1

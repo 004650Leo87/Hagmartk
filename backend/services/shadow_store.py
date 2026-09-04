@@ -143,6 +143,16 @@ class ShadowStoreRepository:
             )
             """)
 
+            # Independent operational-telemetry T0. Does not change Shadow/evidence T0.
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS shadow_telemetry_session (
+                candidate_id TEXT PRIMARY KEY,
+                started_at TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """)
+
             # Provider support snapshot: configured universe vs symbols actually available in runtime.
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS shadow_provider_support (
@@ -330,6 +340,33 @@ class ShadowStoreRepository:
                     "updated_at": r["updated_at"],
                 }
             return None
+
+    def save_telemetry_session(self, candidate_id: str, started_at: str) -> None:
+        from backend.core.time_utils import now_utc_str
+        now_str = now_utc_str()
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO shadow_telemetry_session (candidate_id, started_at, created_at, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(candidate_id) DO UPDATE SET
+                    started_at = excluded.started_at,
+                    updated_at = excluded.updated_at
+                """,
+                (candidate_id, started_at, now_str, now_str),
+            )
+            conn.commit()
+
+    def get_telemetry_session(self, candidate_id: str) -> Optional[Dict[str, str]]:
+        with self._get_connection() as conn:
+            row = conn.execute(
+                "SELECT candidate_id, started_at, created_at, updated_at FROM shadow_telemetry_session WHERE candidate_id = ?",
+                (candidate_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            return {key: str(row[key]) for key in ("candidate_id", "started_at", "created_at", "updated_at")}
 
     def save_provider_support(self, symbol: str, supported: bool, reason: str, checked_at: str) -> None:
         with self._get_connection() as conn:
@@ -824,24 +861,38 @@ class ShadowStoreRepository:
 
     @staticmethod
     def _expected_checks_for_window(candidate_id: str, timeframe: str, now_dt, cursor) -> int:
-        """Expected closed-candle checks elapsed in the current UTC hour."""
-        tf = timeframe.upper()
-        if tf != "M15":
-            return 1
+        """Expected closed-candle slots elapsed in the current UTC hour.
 
+        The lower bound respects both Shadow T0 and the independent telemetry T0.
+        """
         from datetime import timedelta
         from backend.core.time_utils import parse_utc_timestamp
 
+        tf = timeframe.upper()
+        tf_minutes = {"M15": 15, "H1": 60, "H4": 240}.get(tf)
+        if tf_minutes is None:
+            return 0
+
         hour_start = now_dt.replace(minute=0, second=0, microsecond=0)
-        session_row = cursor.execute(
-            "SELECT started_at FROM shadow_session WHERE candidate_id = ?",
-            (candidate_id,),
-        ).fetchone()
-        session_dt = parse_utc_timestamp(session_row[0]) if session_row and session_row[0] else None
-        lower_bound = max(hour_start, session_dt) if session_dt is not None else hour_start
-        boundaries = [hour_start + timedelta(minutes=m) for m in (0, 15, 30, 45)]
-        elapsed = sum(1 for boundary in boundaries if lower_bound <= boundary <= now_dt)
-        return max(1, elapsed)
+        lower_bound = hour_start
+
+        for table in ("shadow_session", "shadow_telemetry_session"):
+            row = cursor.execute(
+                f"SELECT started_at FROM {table} WHERE candidate_id = ?",
+                (candidate_id,),
+            ).fetchone()
+            dt = parse_utc_timestamp(row[0]) if row and row[0] else None
+            if dt is not None and dt > lower_bound:
+                lower_bound = dt
+
+        if tf == "M15":
+            boundaries = [hour_start + timedelta(minutes=m) for m in (0, 15, 30, 45)]
+        elif tf == "H1":
+            boundaries = [hour_start]
+        else:  # H4
+            boundaries = [hour_start] if hour_start.hour % 4 == 0 else []
+
+        return sum(1 for boundary in boundaries if lower_bound <= boundary <= now_dt)
 
     def record_scanner_telemetry(
         self,
@@ -873,6 +924,10 @@ class ShadowStoreRepository:
                 now_dt=now_dt,
                 cursor=cursor,
             )
+            if nominal_expected <= 0:
+                if not success:
+                    return
+                nominal_expected = 1
             cursor.execute(
                 """
                 SELECT expected_checks, successful_checks, failed_checks, last_success_at, last_failure_at, last_error_code
@@ -884,12 +939,26 @@ class ShadowStoreRepository:
             row = cursor.fetchone()
 
             if row:
-                succ = row["successful_checks"] + (1 if success else 0)
-                fail = row["failed_checks"] + (0 if success else 1)
-                exp = max(nominal_expected, succ + fail)
-                last_succ = ts_now if success else row["last_success_at"]
-                last_fail = row["last_failure_at"] if success else ts_now
-                err_code = row["last_error_code"] if success else (error_code or "SCANNER_EXCEPTION")
+                succ = int(row["successful_checks"] or 0)
+                fail = int(row["failed_checks"] or 0)
+                exp = nominal_expected
+                observed_slots = succ + fail
+
+                if success:
+                    if observed_slots < nominal_expected:
+                        succ += 1
+                    elif fail > 0:
+                        fail -= 1
+                        succ += 1
+                    last_succ = ts_now
+                    last_fail = row["last_failure_at"]
+                    err_code = None if fail == 0 else row["last_error_code"]
+                else:
+                    if observed_slots < nominal_expected:
+                        fail += 1
+                    last_succ = row["last_success_at"]
+                    last_fail = ts_now
+                    err_code = error_code or "SCANNER_EXCEPTION"
 
                 cursor.execute(
                     """
@@ -903,7 +972,7 @@ class ShadowStoreRepository:
             else:
                 succ = 1 if success else 0
                 fail = 0 if success else 1
-                exp = max(nominal_expected, succ + fail)
+                exp = nominal_expected
                 last_succ = ts_now if success else None
                 last_fail = None if success else ts_now
                 err_code = None if success else (error_code or "SCANNER_EXCEPTION")
