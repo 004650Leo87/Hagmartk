@@ -102,3 +102,13 @@ Current live report immediately after the clean restart:
 Reproduction:
 
 `python tools/report_fibonacci_research_status.py`
+
+## Read-only API surface
+
+The research summary is exposed internally through:
+
+`GET /api/shadow/fibonacci-research`
+
+The endpoint is GET-only and returns the same research object used by the CLI report. It has no mutation path, no promotion action and no order-execution capability.
+
+Validation after adding the route: **129 passed, 1 skipped** across the service suite plus MT5 adapter tests.

@@ -7,6 +7,7 @@ from backend.domain.candidate import HDF_CANDIDATE_V1_PARAMETER_HASH, HDF_ROBUST
 from backend.services.alert_engine import InternalAlertEngine
 from backend.services.shadow_scanner import SHADOW_ASSETS, SHADOW_TIMEFRAMES, ShadowScannerManager
 from backend.services.shadow_store import ShadowStoreRepository
+from backend.services.fibonacci_prospective_telemetry import FibonacciProspectiveTelemetryEngine
 
 from backend.services.shadow_performance import ShadowPerformanceEngine
 from backend.services.shadow_statistical_validation import ShadowStatisticalValidationEngine
@@ -24,6 +25,7 @@ _stat_engine = ShadowStatisticalValidationEngine(perf_engine=_performance_engine
 _intel_engine = ShadowIntelligenceEngine(store=_store, perf_engine=_performance_engine, stat_engine=_stat_engine)
 _evidence_engine = ShadowDecisionEvidenceEngine(store=_store, intel_engine=_intel_engine)
 _obs_engine = ShadowObservationEngine(store=_store, decision_engine=_evidence_engine)
+_fib_engine = FibonacciProspectiveTelemetryEngine(store=_store)
 
 
 @router.get("/forward-validation")
@@ -44,6 +46,12 @@ def get_shadow_statistical_validation(candidate_id: str = Query("hdf_dvp_exit_2r
 def get_shadow_telemetry(candidate_id: str = Query("hdf_dvp_exit_2r")) -> Dict[str, Any]:
     """Retorna o relatório completo de observabilidade e telemetria operacional do Shadow Mode (READ-ONLY)."""
     return _store.get_shadow_telemetry(candidate_id=candidate_id)
+
+
+@router.get("/fibonacci-research")
+def get_fibonacci_research(candidate_id: str = Query("hdf_dvp_exit_2r")) -> Dict[str, Any]:
+    """Retorna o resumo prospectivo de pesquisa Fibonacci (READ-ONLY / NO PROMOTION)."""
+    return _fib_engine.build_research_summary(candidate_id=candidate_id)
 
 
 @router.get("/intelligence")
