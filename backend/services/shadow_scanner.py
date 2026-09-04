@@ -45,25 +45,25 @@ def get_asset_class(symbol: str) -> str:
 def get_only_closed_candles(
     df: pd.DataFrame, timeframe: str, now_dt: Optional[datetime] = None
 ) -> pd.DataFrame:
-    """Filtra o DataFrame para garantir que barras ainda em formação não sejam incluídas."""
+    """Return only candles whose full timeframe has closed by ``now_dt``.
+
+    Fail closed: malformed timestamps and every future/incomplete candle are excluded.
+    """
     if df.empty:
         return df
 
     if now_dt is None:
         now_dt = now_utc_datetime()
+    elif now_dt.tzinfo is None:
+        now_dt = now_dt.replace(tzinfo=timezone.utc)
+    else:
+        now_dt = now_dt.astimezone(timezone.utc)
 
     tf_minutes = {"M15": 15, "H1": 60, "H4": 240}.get(timeframe.upper(), 15)
-
-    last_time_str = str(df["time"].iloc[-1])
-    last_dt = parse_utc_timestamp(last_time_str)
-
-    if last_dt is not None:
-        candle_end_dt = last_dt + timedelta(minutes=tf_minutes)
-        if candle_end_dt > now_dt:
-            # A última barra ainda está em formação; remove do conjunto de decisão
-            return df.iloc[:-1]
-
-    return df
+    parsed = pd.to_datetime(df["time"], utc=True, errors="coerce")
+    close_times = parsed + pd.to_timedelta(tf_minutes, unit="m")
+    mask = parsed.notna() & (close_times <= pd.Timestamp(now_dt))
+    return df.loc[mask].copy()
 
 
 class ShadowScannerManager:
@@ -580,6 +580,15 @@ class ShadowScannerManager:
         """Parseia string de tempo de evento para datetime UTC usando helper centralizado."""
         return parse_utc_timestamp(time_str)
 
+    def _should_persist_hdf_evidence(self, detected_at: str, is_synthetic: bool = False) -> bool:
+        if is_synthetic:
+            return True
+        detected_dt = self._parse_event_time(detected_at)
+        shadow_dt = self._parse_shadow_started_at()
+        if detected_dt is None or shadow_dt is None:
+            return False
+        return detected_dt >= shadow_dt
+
     def _process_hdf_evidences(
         self,
         symbol: str,
@@ -639,6 +648,8 @@ class ShadowScannerManager:
                             ev_id = f"ev_bull_{symbol}_{timeframe}_{t_clean}"
                             pat_str = pattern_type.value if hasattr(pattern_type, "value") else str(pattern_type)
                             source_val = "TEST" if is_synthetic else "LIVE_PROSPECTIVE"
+                            if not self._should_persist_hdf_evidence(str(p2.confirmed_at_time), is_synthetic):
+                                continue
 
                             # Price integrity validation
                             reasons = []
@@ -714,6 +725,8 @@ class ShadowScannerManager:
                             ev_id = f"ev_bear_{symbol}_{timeframe}_{t_clean}"
                             pat_str = pattern_type.value if hasattr(pattern_type, "value") else str(pattern_type)
                             source_val = "TEST" if is_synthetic else "LIVE_PROSPECTIVE"
+                            if not self._should_persist_hdf_evidence(str(p2.confirmed_at_time), is_synthetic):
+                                continue
 
                             # Price integrity validation
                             reasons = []

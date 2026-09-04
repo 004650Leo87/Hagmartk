@@ -18,7 +18,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 import json
 from pathlib import Path
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from .market_adapter import MarketAdapter
 from backend.core.constants import categorize_symbol
@@ -39,9 +39,17 @@ class MT5MarketAdapter(MarketAdapter):
     imported in environments that do not have the native library installed.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, runtime_scope: Optional[Dict[str, Any]] = None) -> None:
         self._connected = False
-        self._runtime_scope = self._load_runtime_scope()
+        self._runtime_scope = dict(runtime_scope) if runtime_scope is not None else self._load_runtime_scope()
+        raw_offset = self._runtime_scope.get("broker_time_offset_hours", 0)
+        try:
+            offset_hours = float(raw_offset)
+        except (TypeError, ValueError) as exc:
+            raise AdapterError("Invalid broker_time_offset_hours in MT5 runtime scope") from exc
+        if abs(offset_hours) > 14:
+            raise AdapterError("broker_time_offset_hours must be between -14 and +14")
+        self._broker_time_offset = timedelta(hours=offset_hours)
 
     @staticmethod
     def _load_runtime_scope() -> Dict[str, Any]:
@@ -49,6 +57,17 @@ class MT5MarketAdapter(MarketAdapter):
         if not scope_path.exists():
             return {}
         return json.loads(scope_path.read_text(encoding="utf-8"))
+
+    def _normalize_broker_epoch(self, epoch_seconds: Any) -> datetime:
+        raw_dt = datetime.fromtimestamp(float(epoch_seconds), tz=timezone.utc)
+        return raw_dt - self._broker_time_offset
+
+    def _to_broker_query_time(self, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            utc_value = value.replace(tzinfo=timezone.utc)
+        else:
+            utc_value = value.astimezone(timezone.utc)
+        return utc_value + self._broker_time_offset
 
     def _load_mt5(self):
         try:
@@ -206,7 +225,7 @@ class MT5MarketAdapter(MarketAdapter):
 
         raw_tick_time = getattr(tick, "time", 0)
         tick_time = (
-            datetime.fromtimestamp(raw_tick_time, tz=timezone.utc).isoformat()
+            self._normalize_broker_epoch(raw_tick_time).isoformat()
             if raw_tick_time > 0
             else datetime.now(timezone.utc).isoformat()
         )
@@ -280,7 +299,9 @@ class MT5MarketAdapter(MarketAdapter):
                 raise ValueError("Both from_time and to_time must be provided for range queries")
 
             # MT5 expects datetime objects (aware or naive) — we pass UTC datetimes
-            rates = mt5.copy_rates_range(symbol, timeframe, from_time, to_time)
+            rates = mt5.copy_rates_range(
+                symbol, timeframe, self._to_broker_query_time(from_time), self._to_broker_query_time(to_time)
+            )
         elif count is not None:
             # fetch last `count` bars
             rates = mt5.copy_rates_from_pos(symbol, timeframe, 0, int(count))
@@ -307,7 +328,7 @@ class MT5MarketAdapter(MarketAdapter):
         for r in rates:
             time_val = _get_field(r, "time")
             timestamp = (
-                datetime.fromtimestamp(time_val, tz=timezone.utc).isoformat()
+                self._normalize_broker_epoch(time_val).isoformat()
                 if time_val is not None
                 else None
             )

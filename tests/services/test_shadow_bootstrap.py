@@ -259,3 +259,23 @@ def test_restart_does_not_recreate_old_event():
         resaved = store.save_event(evt, dedup_key=dedup_key)
         assert resaved is False
         assert store.count_events() == 1
+
+
+def test_closed_candle_filter_rejects_all_future_rows():
+    now_dt = datetime(2026, 8, 10, 12, 10, 0, tzinfo=timezone.utc)
+    df = pd.DataFrame([
+        {"time": "2026-08-10 11:45:00", "open": 1.0, "high": 1.1, "low": 0.9, "close": 1.0},
+        {"time": "2026-08-10 12:00:00", "open": 1.0, "high": 1.1, "low": 0.9, "close": 1.0},
+        {"time": "2026-08-10 12:15:00", "open": 1.0, "high": 1.1, "low": 0.9, "close": 1.0},
+        {"time": "2026-08-10 15:00:00", "open": 1.0, "high": 1.1, "low": 0.9, "close": 1.0},
+    ])
+    closed = get_only_closed_candles(df, timeframe="M15", now_dt=now_dt)
+    assert list(closed["time"]) == ["2026-08-10 11:45:00"]
+
+
+def test_hdf_live_evidence_requires_shadow_t0():
+    manager = ShadowScannerManager.__new__(ShadowScannerManager)
+    manager.shadow_started_at = "2026-08-10 12:00:00"
+    assert manager._should_persist_hdf_evidence("2026-08-10 11:59:59", False) is False
+    assert manager._should_persist_hdf_evidence("2026-08-10 12:00:00", False) is True
+    assert manager._should_persist_hdf_evidence("historical", True) is True

@@ -89,6 +89,7 @@ def make_fake_mt5_module():
         return out
 
     def copy_rates_range(symbol, timeframe, from_time, to_time):
+        fake.last_range_args = (from_time, to_time)
         # return a small range based on seconds
         seconds = int((to_time - from_time).total_seconds())
         n = min(10, max(1, seconds // 60))
@@ -114,7 +115,7 @@ def test_mt5_adapter_with_mocked_mt5(monkeypatch):
     # inject fake module
     sys.modules["MetaTrader5"] = fake_mt5
 
-    adapter = MT5MarketAdapter()
+    adapter = MT5MarketAdapter(runtime_scope={"server": "Tickmill-Live"})
 
     # connection
     adapter.connect()
@@ -158,3 +159,27 @@ def test_mt5_adapter_raises_when_mt5_missing():
             MT5MarketAdapter()._load_mt5()
     else:
         pytest.skip("MetaTrader5 is installed in the environment; skipping missing-module assertion")
+
+
+def test_mt5_adapter_normalizes_configured_broker_time_offset(monkeypatch):
+    fake_mt5 = make_fake_mt5_module()
+    sys.modules["MetaTrader5"] = fake_mt5
+
+    adapter = MT5MarketAdapter(
+        runtime_scope={"server": "Tickmill-Live", "broker_time_offset_hours": 3}
+    )
+    adapter.connect()
+
+    expected = datetime.fromtimestamp(1620000000, tz=timezone.utc) - timedelta(hours=3)
+    assert adapter.get_quote("EURUSD")["time"] == expected.isoformat()
+    assert adapter.get_candles("EURUSD", 5, count=1)[0]["time"] == expected.isoformat()
+
+    start = datetime(2026, 9, 3, 20, 0, tzinfo=timezone.utc)
+    end = start + timedelta(minutes=10)
+    adapter.get_candles("EURUSD", 5, from_time=start, to_time=end)
+    sent_start, sent_end = fake_mt5.last_range_args
+    assert sent_start == start + timedelta(hours=3)
+    assert sent_end == end + timedelta(hours=3)
+
+    adapter.disconnect()
+    del sys.modules["MetaTrader5"]
