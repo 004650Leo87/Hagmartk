@@ -45,3 +45,12 @@ def test_candidate_api_exposes_exit_provenance_without_hash_change():
     assert provenance["provenance"] == "HAGMARTK_QUANT_BENCHMARK"
     assert provenance["original_divap_claim_allowed"] is False
     assert provenance["promotion_allowed"] is False
+
+
+def test_shadow_event_default_hash_uses_canonical_candidate_hash():
+    from backend.domain.candidate import HDF_CANDIDATE_V1_PARAMETER_HASH
+    from backend.domain.shadow_models import ShadowEvent
+
+    event = ShadowEvent(event_id="hash_integrity_test")
+    assert event.parameter_hash == HDF_CANDIDATE_V1_PARAMETER_HASH
+    assert HDF_ROBUST_CANDIDATE_V1.validate_immutability(event.parameter_hash) is True

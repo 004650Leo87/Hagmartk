@@ -6,6 +6,8 @@ from enum import Enum
 import json
 from typing import Any, Dict, List, Optional
 
+from backend.domain.candidate import HDF_CANDIDATE_V1_PARAMETER_HASH
+
 
 class ShadowState(str, Enum):
     DETECTED = "DETECTED"
@@ -120,7 +122,7 @@ class ShadowEvent:
     event_id: str
     candidate_id: str = "hdf_dvp_exit_2r"
     candidate_version: str = "1.0.0"
-    parameter_hash: str = "a212388cfcfbdcdbc3e8519cfeb51b32aeab03db1bfcdfbab7d0ddfcd5be3dcf"
+    parameter_hash: str = HDF_CANDIDATE_V1_PARAMETER_HASH
 
     symbol: str = "EURUSD"
     asset_class: str = "FOREX"
