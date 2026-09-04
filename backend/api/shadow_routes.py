@@ -8,6 +8,7 @@ from backend.services.alert_engine import InternalAlertEngine
 from backend.services.shadow_scanner import SHADOW_ASSETS, SHADOW_TIMEFRAMES, ShadowScannerManager
 from backend.services.shadow_store import ShadowStoreRepository
 from backend.services.fibonacci_prospective_telemetry import FibonacciProspectiveTelemetryEngine
+from backend.strategies.hdf.exit_policy_provenance import get_exit_policy_provenance
 
 from backend.services.shadow_performance import ShadowPerformanceEngine
 from backend.services.shadow_statistical_validation import ShadowStatisticalValidationEngine
@@ -277,6 +278,7 @@ def list_shadow_candidates() -> List[Dict[str, Any]]:
             "strategy_id": cand.strategy_id,
             "variant": cand.variant,
             "exit_policy": cand.exit_policy,
+            "exit_policy_provenance": get_exit_policy_provenance(cand.exit_policy).to_dict(),
             "research_status": cand.research_status,
             "parameter_hash": HDF_CANDIDATE_V1_PARAMETER_HASH,
             "source_commit": cand.source_commit,
