@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.api.routes import router
 from backend.api.shadow_routes import router as shadow_router
+from backend.api.registry_routes import router as registry_router
 
 from backend.bootstrap import create_system, start_system, shutdown_system
 import os
@@ -37,6 +38,7 @@ app.add_middleware(
 
 app.include_router(router)
 app.include_router(shadow_router)
+app.include_router(registry_router)
 
 
 @app.get("/")
