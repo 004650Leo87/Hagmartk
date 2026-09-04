@@ -782,6 +782,27 @@ class ShadowStoreRepository:
             updated_at=r["updated_at"], metadata=meta, evidence=evi,
         )
 
+    @staticmethod
+    def _expected_checks_for_window(candidate_id: str, timeframe: str, now_dt, cursor) -> int:
+        """Expected closed-candle checks elapsed in the current UTC hour."""
+        tf = timeframe.upper()
+        if tf != "M15":
+            return 1
+
+        from datetime import timedelta
+        from backend.core.time_utils import parse_utc_timestamp
+
+        hour_start = now_dt.replace(minute=0, second=0, microsecond=0)
+        session_row = cursor.execute(
+            "SELECT started_at FROM shadow_session WHERE candidate_id = ?",
+            (candidate_id,),
+        ).fetchone()
+        session_dt = parse_utc_timestamp(session_row[0]) if session_row and session_row[0] else None
+        lower_bound = max(hour_start, session_dt) if session_dt is not None else hour_start
+        boundaries = [hour_start + timedelta(minutes=m) for m in (0, 15, 30, 45)]
+        elapsed = sum(1 for boundary in boundaries if lower_bound <= boundary <= now_dt)
+        return max(1, elapsed)
+
     def record_scanner_telemetry(
         self,
         candidate_id: str,
@@ -792,18 +813,26 @@ class ShadowStoreRepository:
         now_str: Optional[str] = None,
     ) -> None:
         """Registra a telemetria prospectiva de um ciclo de varredura (1h aggregation window)."""
-        from datetime import datetime
-        from backend.core.time_utils import now_utc_datetime, format_utc_str
+        from backend.core.time_utils import now_utc_datetime, format_utc_str, parse_utc_timestamp
 
-        now_dt = now_utc_datetime() if not now_str else datetime.fromisoformat(now_str.replace("Z", "+00:00"))
+        if not now_str:
+            now_dt = now_utc_datetime()
+        else:
+            now_dt = parse_utc_timestamp(now_str)
+            if now_dt is None:
+                raise ValueError(f"Invalid scanner telemetry timestamp: {now_str!r}")
         window_start = format_utc_str(now_dt.replace(minute=0, second=0, microsecond=0))
         window_end = format_utc_str(now_dt.replace(minute=59, second=59, microsecond=999999))
         ts_now = format_utc_str(now_dt)
 
-        nominal_expected = 4 if timeframe.upper() == "M15" else 1
-
         with self._get_connection() as conn:
             cursor = conn.cursor()
+            nominal_expected = self._expected_checks_for_window(
+                candidate_id=candidate_id,
+                timeframe=timeframe,
+                now_dt=now_dt,
+                cursor=cursor,
+            )
             cursor.execute(
                 """
                 SELECT expected_checks, successful_checks, failed_checks, last_success_at, last_failure_at, last_error_code

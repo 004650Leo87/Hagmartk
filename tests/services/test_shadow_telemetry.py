@@ -91,3 +91,38 @@ def test_statistical_engine_consumes_real_telemetry(temp_store):
     snap2 = stat_engine.build_validation_snapshot()
     assert snap2.measurement["scanner_coverage"] == 1.0
     assert snap2.operational_policy["quality_state"] == "DATA_QUALITY_OK"
+
+
+def test_m15_expected_checks_follow_elapsed_boundaries(temp_store):
+    candidate = "hdf_dvp_exit_2r"
+    temp_store.record_scanner_telemetry(candidate, "EURUSD", "M15", success=True, now_str="2026-09-04T10:00:02+00:00")
+    temp_store.record_scanner_telemetry(candidate, "EURUSD", "M15", success=True, now_str="2026-09-04T10:15:02+00:00")
+    telemetry = temp_store.get_shadow_telemetry(candidate)
+    comb = next(c for c in telemetry["combinations"] if c["symbol"] == "EURUSD" and c["timeframe"] == "M15")
+    assert comb["expected_checks"] == 2
+    assert comb["successful_checks"] == 2
+    assert comb["coverage"] == 1.0
+
+
+def test_m15_expected_checks_respect_mid_hour_shadow_t0(temp_store):
+    candidate = "hdf_dvp_exit_2r"
+    temp_store.save_shadow_session(candidate, "2026-09-04T10:40:00+00:00", True)
+    temp_store.record_scanner_telemetry(candidate, "GBPUSD", "M15", success=True, now_str="2026-09-04T10:45:02+00:00")
+    telemetry = temp_store.get_shadow_telemetry(candidate)
+    comb = next(c for c in telemetry["combinations"] if c["symbol"] == "GBPUSD" and c["timeframe"] == "M15")
+    assert comb["expected_checks"] == 1
+    assert comb["successful_checks"] == 1
+    assert comb["coverage"] == 1.0
+
+
+def test_m15_expected_checks_accept_production_naive_utc_timestamp(temp_store):
+    candidate = "hdf_dvp_exit_2r"
+    temp_store.save_shadow_session(candidate, "2026-09-04 10:40:00", True)
+    temp_store.record_scanner_telemetry(
+        candidate, "USDJPY", "M15", success=True, now_str="2026-09-04 10:45:02"
+    )
+    telemetry = temp_store.get_shadow_telemetry(candidate)
+    comb = next(c for c in telemetry["combinations"] if c["symbol"] == "USDJPY" and c["timeframe"] == "M15")
+    assert comb["expected_checks"] == 1
+    assert comb["successful_checks"] == 1
+    assert comb["coverage"] == 1.0
