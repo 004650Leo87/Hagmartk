@@ -29,10 +29,12 @@ class InternalShadowPublisher(EventPublisher):
         self.store = store
 
     def publish(self, event_type: ShadowEventType, event: ShadowEvent, details: Dict[str, Any]) -> None:
-        now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        now_dt = datetime.now(timezone.utc)
+        now_str = now_dt.strftime("%Y-%m-%d %H:%M:%S.%f")
 
-        # Registra a transição de estado no Event Store
-        trans_id = f"trans_{event.event_id}_{int(datetime.now(timezone.utc).timestamp())}"
+        # Registra a transição de estado no Event Store; microsegundos + tipo evitam colisões
+        # quando 1R e alvo/stop acontecem no mesmo candle/segundo.
+        trans_id = f"trans_{event.event_id}_{event_type.value}_{int(now_dt.timestamp() * 1_000_000)}"
         trans = ShadowTransition(
             transition_id=trans_id,
             event_id=event.event_id,

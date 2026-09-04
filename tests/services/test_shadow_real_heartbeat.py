@@ -63,6 +63,7 @@ def test_heartbeat_has_39_registered_combinations(temp_store):
 
 def test_evaluation_count_increments_only_on_new_closed_candle(scanner_manager, temp_store):
     """Testa se evaluation_count_total só cresce quando um novo candle fechado é recebido."""
+    scanner_manager.runtime_started_at = "2026-07-31T00:00:00+00:00"
     df1 = _generate_test_candles(count=30, timeframe="H1", start_time="2026-08-01 00:00:00")
     
     # 1. Primeira chamada: novo candle fechado

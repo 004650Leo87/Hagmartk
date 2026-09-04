@@ -73,7 +73,7 @@ def _manager(temp_store: ShadowStoreRepository) -> ShadowScannerManager:
 def _isolate_analysis(monkeypatch, manager, occ):
     monkeypatch.setattr(
         manager.strategy, "evaluate_full_dataset_analysis",
-        lambda df, symbol, timeframe: {"occurrences": [occ]},
+        lambda df, symbol, timeframe, **kwargs: {"occurrences": [occ]},
     )
     monkeypatch.setattr(manager, "_process_hdf_evidences", lambda *args, **kwargs: None)
     monkeypatch.setattr(
@@ -101,6 +101,8 @@ def test_existing_event_can_continue_after_restart(temp_store, monkeypatch):
         event_id="evt_EURUSD_M15_1788516900",
         symbol="EURUSD", timeframe="M15", direction="BULLISH",
         confluence_time="2026-09-04T10:15:00+00:00",
+        armed_at="2026-09-04T10:15:00+00:00",
+        activation_level=1.1000, initial_stop=1.0900,
         current_state=ShadowState.ARMED.value,
         created_at="2026-09-04T10:16:00+00:00",
         updated_at="2026-09-04T10:16:00+00:00",
@@ -113,8 +115,8 @@ def test_existing_event_can_continue_after_restart(temp_store, monkeypatch):
     assert saved is not None
     assert saved.current_state == ShadowState.ACTIVATED.value
     assert saved.activated_at == "2026-09-04T10:30:00+00:00"
-    assert saved.entry_price == pytest.approx(1.1010)
-    assert saved.initial_risk == pytest.approx(0.0110)
+    assert saved.entry_price == pytest.approx(1.1000)
+    assert saved.initial_risk == pytest.approx(0.0100)
 
 
 def test_real_hdf_occurrence_maps_to_shadow_event_without_legacy_nested_fields(temp_store, monkeypatch):
@@ -179,3 +181,23 @@ def test_invalid_decision_timestamp_fails_closed(temp_store, monkeypatch):
 
     events = manager.scan_closed_candle("EURUSD", "M15", _candles(), is_synthetic=False)
     assert events == []
+
+
+def test_runtime_baseline_skips_pre_start_candle_without_telemetry_or_analysis(temp_store, monkeypatch):
+    manager = _manager(temp_store)
+    manager.runtime_started_at = "2026-09-04T11:00:00+00:00"
+    monkeypatch.setattr(
+        manager.strategy,
+        "evaluate_full_dataset_analysis",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("baseline must not analyze")),
+    )
+
+    events = manager.scan_closed_candle("EURUSD", "M15", _candles(), is_synthetic=False)
+    assert events == []
+    state = temp_store.get_scanner_state(HDF_ROBUST_CANDIDATE_V1.candidate_id, "EURUSD", "M15")
+    assert state is not None
+    assert state.last_processed_candle == "2026-09-04T10:45:00+00:00"
+    assert state.evaluation_count_total == 0
+    with temp_store._get_connection() as conn:
+        count = conn.execute("SELECT COUNT(*) FROM shadow_scanner_telemetry").fetchone()[0]
+    assert count == 0

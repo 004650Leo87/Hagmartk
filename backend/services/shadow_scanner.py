@@ -19,6 +19,7 @@ from backend.domain.shadow_models import (
 )
 from backend.strategies.hdf.models import ReversalPatternType
 from backend.services.alert_engine import InternalAlertEngine, InternalShadowPublisher
+from backend.services.paper_execution import ShadowPaperExecutionEngine
 from backend.services.shadow_store import ShadowStoreRepository
 from backend.strategies.hdf.strategy import HDFStrategy, PatternAssociationPolicy, VolumeObservationPolicy
 
@@ -122,6 +123,9 @@ class ShadowScannerManager:
             stop_buffer=0.0,
             volume_observation_policy=VolumeObservationPolicy.CONFLUENCE_CANDLE,
             pattern_association_policy=PatternAssociationPolicy.SAME_BAR,
+        )
+        self.paper_executor = ShadowPaperExecutionEngine(
+            store=self.store, publisher=self.publisher, max_activation_bars=self.strategy.max_activation_bars
         )
 
         # Tentar restaurar sessão Shadow persistida (Recovery)
@@ -278,6 +282,29 @@ class ShadowScannerManager:
             )
             return []
 
+        # Baseline de runtime: candle que já estava fechado quando o processo subiu
+        # não é observação prospectiva desta instância. Marca como processado e ignora.
+        if not is_synthetic:
+            opened_dt = self._parse_event_time(last_closed_time)
+            runtime_dt = self._parse_event_time(self.runtime_started_at)
+            tf_minutes = {"M15": 15, "H1": 60, "H4": 240}.get(timeframe.upper(), 15)
+            closed_at = opened_dt + timedelta(minutes=tf_minutes) if opened_dt is not None else None
+            if runtime_dt is None or closed_at is None or closed_at <= runtime_dt:
+                # Existing paper events may legitimately advance through downtime candles.
+                # No new setup/evidence/telemetry is created in this recovery baseline branch.
+                self.paper_executor.process_candles(
+                    symbol, timeframe, df_closed.to_dict(orient="records")
+                )
+                st.last_processed_candle = last_closed_time
+                st.last_scan_at = now_str
+                st.scanner_status = ScannerStatus.WAITING_NEW_CANDLE.value
+                self.store.save_scanner_state(st)
+                _logger.info(
+                    "[SHADOW] RUNTIME_BASELINE_SKIPPED: symbol=%s tf=%s candle=%s close=%s runtime_start=%s",
+                    symbol, timeframe, last_closed_time, closed_at, self.runtime_started_at,
+                )
+                return []
+
         # Novo candle fechado detectado — incrementa contador de avaliações HDF reais
         st.evaluation_count_total += 1
         st.last_evaluated_candle_time = last_closed_time
@@ -291,6 +318,11 @@ class ShadowScannerManager:
         # Registra telemetria de sucesso na varredura da combinação
         self.store.record_scanner_telemetry(
             HDF_ROBUST_CANDIDATE_V1.candidate_id, symbol, timeframe, success=True, now_str=now_str
+        )
+
+        # Paper execution owns lifecycle after the event is first persisted.
+        self.paper_executor.process_candles(
+            symbol, timeframe, df_closed.to_dict(orient="records")
         )
 
         # Registra a observação prospectiva continuada de forma idempotente
@@ -308,7 +340,7 @@ class ShadowScannerManager:
             _logger.warning("[SHADOW] Erro ao gravar observação prospectiva: %s", _obs_err)
 
         # Avalia a estratégia completa no conjunto de candles (warmup incluso)
-        analysis = self.strategy.evaluate_full_dataset_analysis(df_closed, symbol, timeframe)
+        analysis = self.strategy.evaluate_full_dataset_analysis(df_closed, symbol, timeframe, include_open_tail=True)
         occurrences = analysis.get("occurrences", [])
 
         # Fibonacci research telemetry is isolated from candidate/event promotion.
@@ -364,6 +396,10 @@ class ShadowScannerManager:
             ts_val = int(event_dt.timestamp())
             evt_id = f"evt_{symbol}_{timeframe}_{ts_val}"
             existing_evt = self.store.get_event(evt_id)
+            if existing_evt is not None:
+                # Once persisted, lifecycle belongs exclusively to ShadowPaperExecutionEngine.
+                # Full-dataset re-evaluation must never regress/overwrite live paper state.
+                continue
             if (
                 self.shadow_session_recovered
                 and not is_synthetic
@@ -541,6 +577,9 @@ class ShadowScannerManager:
                     "bootstrap_detected": is_bootstrap,
                     "classification": classification,
                     "original_confluence_time": event_time_str,
+                    "execution_mode": "SHADOW_PAPER",
+                    "broker_order_sent": False,
+                    "paper_activation_bars_elapsed": 0,
                 },
                 evidence=evi.__dict__,
             )

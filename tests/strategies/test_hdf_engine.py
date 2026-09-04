@@ -279,3 +279,37 @@ def test_hdf_scope_uses_only_level_1_divergence_and_frozen_timeframes():
     assert strategy.allowed_timeframes == ["M5", "M15", "M30", "H1", "H2", "H4", "D1", "W1"]
     assert strategy.div_detector.check_bearish_divergence.__doc__.startswith("Bearish Divergence")
     assert strategy.div_detector.check_bullish_divergence.__doc__.startswith("Bullish Divergence")
+
+
+def test_live_open_tail_detects_fresh_setup_without_premature_expiry(monkeypatch):
+    from backend.strategies.hdf.detectors import PivotPoint
+
+    strat = HDFStrategy(variant="HDF_DVP", max_activation_bars=5)
+    n = strat.minimum_required_bars + 1
+    times = pd.date_range("2026-09-04T00:00:00Z", periods=n, freq="15min")
+    df = pd.DataFrame({
+        "time": [t.isoformat() for t in times],
+        "open": [1.0950] * n, "high": [1.0990] * n,
+        "low": [1.0910] * n, "close": [1.0960] * n,
+        "tick_volume": [1200] * n,
+    })
+    t = n - 1
+    p1 = PivotPoint(t - 10, str(df.time.iloc[t - 10]), 1.0920, False, t - 8, str(df.time.iloc[t - 8]))
+    p2 = PivotPoint(t - 2, str(df.time.iloc[t - 2]), 1.0910, False, t, str(df.time.iloc[t]))
+    monkeypatch.setattr(strat.rsi_indicator, "calculate", lambda frame: pd.Series([40.0] * n))
+    monkeypatch.setattr(strat.pivot_detector, "find_pivots", lambda frame: ([], [p1, p2]))
+    monkeypatch.setattr(strat.div_detector, "check_bullish_divergence", lambda *args: (True, {
+        "rsi_p1": 30.0, "rsi_p2": 35.0, "price_delta": -0.001,
+        "price_delta_pct": -0.1, "rsi_delta": 5.0,
+        "bars_between_pivots": 8, "rsi_extreme_class": "TYPE_1",
+    }))
+    monkeypatch.setattr(strat.vol_filter, "evaluate_volume", lambda *args: (1200.0, 1000.0, 1.2, "ABOVE_AVERAGE"))
+    monkeypatch.setattr(strat.pattern_detector, "detect_at", lambda *args: (
+        ReversalPatternType.BULLISH_ENGULFING, {"high": 1.0990, "low": 1.0910}
+    ))
+
+    historical = strat.evaluate_full_dataset_analysis(df, "EURUSD", "M15")
+    live = strat.evaluate_full_dataset_analysis(df, "EURUSD", "M15", include_open_tail=True)
+    assert historical["occurrences"] == []
+    assert len(live["occurrences"]) == 1
+    assert live["occurrences"][0].state == HDFState.ARMED

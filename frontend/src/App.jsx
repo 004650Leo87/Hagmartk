@@ -90,6 +90,8 @@ export default function App() {
   const [hdfToasts, setHdfToasts] = useState([]);
   const seenEvidenceIdsRef = useRef(new Set());
   const evidenceBaselineLoadedRef = useRef(false);
+  const seenShadowStateKeysRef = useRef(new Set());
+  const shadowBaselineLoadedRef = useRef(false);
   const [systemStatus, setSystemStatus] = useState('UNKNOWN');
   const [systemHealth, setSystemHealth] = useState(null);
   const [activeEvidence, setActiveEvidence] = useState(null);
@@ -147,8 +149,10 @@ export default function App() {
       try {
         const scanners = await getShadowScanners();
         if (Array.isArray(scanners)) {
-          const running = scanners.filter((s) => s.status === 'RUNNING').length;
-          setOperationalCount(running);
+          const operational = scanners.filter((s) =>
+            !s.is_stale && (s.status === 'RUNNING' || s.status === 'WAITING_NEW_CANDLE')
+          ).length;
+          setOperationalCount(operational);
         }
       } catch (err) {
         console.error('Erro ao carregar scanners Shadow:', err);
@@ -156,7 +160,24 @@ export default function App() {
 
       try {
         const recent = await getShadowRecentEvents(20);
-        setShadowEvents(recent?.toast_events || recent?.events || []);
+        const liveShadow = recent?.toast_events || recent?.events || [];
+        setShadowEvents(liveShadow);
+        const stateRows = liveShadow.filter((ev) => ev?.event_id && ev?.status_code);
+        if (shadowBaselineLoadedRef.current) {
+          const changed = stateRows.filter((ev) => {
+            const key = `${ev.event_id}:${ev.status_code}`;
+            return !seenShadowStateKeysRef.current.has(key);
+          });
+          if (changed.length) {
+            setHdfToasts((prev) => [
+              ...changed.map((ev) => ({ ...ev, id: `${ev.event_id}:${ev.status_code}` })),
+              ...prev,
+            ].slice(0, 8));
+          }
+        } else {
+          shadowBaselineLoadedRef.current = true;
+        }
+        stateRows.forEach((ev) => seenShadowStateKeysRef.current.add(`${ev.event_id}:${ev.status_code}`));
       } catch (err) {
         console.error('Erro ao carregar eventos Shadow:', err);
       }

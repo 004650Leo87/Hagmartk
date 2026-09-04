@@ -382,7 +382,7 @@ def list_recent_shadow_events(
     recent = all_events[:n]
     formatted = [InternalAlertEngine.format_market_alert(e) for e in recent]
     # Filtrar por toast-worthy states
-    TOAST_STATES = {"ARMED", "ACTIVATED", "TARGET_2R", "STOPPED"}
+    TOAST_STATES = {"ARMED", "ACTIVATED", "TARGET_2R", "STOPPED", "EXPIRED", "INVALIDATED"}
     toast_events = [e for e in formatted if e.get("status_code") in TOAST_STATES]
     return {
         "events": formatted,

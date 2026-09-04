@@ -500,9 +500,12 @@ class ShadowStoreRepository:
                 activated_at = ?,
                 entry_price = ?,
                 initial_risk = ?,
+                target_2R = ?,
                 mfe_r_live = ?,
                 mae_r_live = ?,
                 bars_since_activation = ?,
+                market_candle_time = ?,
+                processed_at = ?,
                 updated_at = ?,
                 metadata_json = ?,
                 evidence_json = ?
@@ -514,9 +517,12 @@ class ShadowStoreRepository:
                     evt.activated_at,
                     evt.entry_price,
                     evt.initial_risk,
+                    evt.target_2R,
                     evt.mfe_r_live,
                     evt.mae_r_live,
                     evt.bars_since_activation,
+                    evt.market_candle_time,
+                    evt.processed_at,
                     evt.updated_at,
                     json.dumps(evt.metadata),
                     json.dumps(evt.evidence) if evt.evidence else "",
@@ -827,9 +833,23 @@ class ShadowStoreRepository:
 
     def get_shadow_statistics(self, started_at: str = "") -> ShadowStatistics:
         """Calcula estatísticas prospectivas estritas do Shadow Mode (começando do zero)."""
-        events = self.list_history_events()
-        stats = ShadowStatistics(shadow_started_at=started_at)
+        from backend.core.time_utils import parse_utc_timestamp
 
+        raw_events = self.list_history_events()
+        cutoff = parse_utc_timestamp(started_at) if started_at else None
+        events = []
+        for evt in raw_events:
+            meta = evt.metadata or {}
+            if evt.event_id.startswith("test_") or meta.get("is_test") or meta.get("synthetic"):
+                continue
+            if meta.get("classification") in {"BOOTSTRAP_EXISTING", "RECOVERY_BACKFILL_IGNORED"}:
+                continue
+            event_dt = parse_utc_timestamp(evt.confluence_time or evt.created_at)
+            if cutoff is not None and event_dt is not None and event_dt < cutoff:
+                continue
+            events.append(evt)
+
+        stats = ShadowStatistics(shadow_started_at=started_at)
         if not events:
             return stats
 

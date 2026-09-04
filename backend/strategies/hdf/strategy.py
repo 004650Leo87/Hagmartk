@@ -108,7 +108,7 @@ class HDFStrategy(BaseStrategy):
         self.vol_filter = VolumeFilter(ma_period=20)
         self.pattern_detector = ReversalPatternDetector()
 
-    def evaluate_full_dataset_analysis(self, df: pd.DataFrame, symbol: str, timeframe: str) -> Dict[str, Any]:
+    def evaluate_full_dataset_analysis(self, df: pd.DataFrame, symbol: str, timeframe: str, include_open_tail: bool = False) -> Dict[str, Any]:
         """Avalia um dataset completo com funil de formação auditado (D, DV, DP, DVP), auditoria NEXT_BAR,
 
         e estudo duplo de excursão (RAW MFE/MAE e REALIZABLE MFE/MAE BEFORE STOP).
@@ -145,7 +145,8 @@ class HDFStrategy(BaseStrategy):
         opens = df["open"].values
         times = df["time"].values
 
-        for t in range(self.minimum_required_bars, n - self.max_activation_bars):
+        analysis_end = n if include_open_tail else max(self.minimum_required_bars, n - self.max_activation_bars)
+        for t in range(self.minimum_required_bars, analysis_end):
             t_time = str(times[t])
 
             # --------------------------------------------------------
@@ -306,7 +307,9 @@ class HDFStrategy(BaseStrategy):
                                     break
 
                             if not activated and occ.state == HDFState.ARMED:
-                                occ.state = HDFState.EXPIRED
+                                available_future_bars = max(0, min(self.max_activation_bars, n - (t + 1)))
+                                if available_future_bars >= self.max_activation_bars:
+                                    occ.state = HDFState.EXPIRED
 
                             occurrences.append(occ)
 
@@ -455,7 +458,9 @@ class HDFStrategy(BaseStrategy):
                                     break
 
                             if not activated and occ.state == HDFState.ARMED:
-                                occ.state = HDFState.EXPIRED
+                                available_future_bars = max(0, min(self.max_activation_bars, n - (t + 1)))
+                                if available_future_bars >= self.max_activation_bars:
+                                    occ.state = HDFState.EXPIRED
 
                             occurrences.append(occ)
 
