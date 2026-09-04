@@ -240,6 +240,45 @@ class ShadowStoreRepository:
             )
             """)
 
+            # Independent Fibonacci research telemetry; never promotes candidate state.
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS shadow_fibonacci_telemetry (
+                telemetry_id TEXT PRIMARY KEY,
+                research_scope TEXT NOT NULL,
+                candidate_id TEXT NOT NULL,
+                occurrence_id TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                timeframe TEXT NOT NULL,
+                direction TEXT NOT NULL,
+                mode TEXT NOT NULL,
+                role TEXT NOT NULL,
+                policy_id TEXT NOT NULL,
+                decision_time TEXT NOT NULL,
+                decision_status TEXT NOT NULL,
+                decision_reason TEXT NOT NULL,
+                anchor_a_time TEXT NOT NULL,
+                anchor_a_price REAL,
+                anchor_a_confirmed_at TEXT NOT NULL,
+                anchor_b_time TEXT NOT NULL,
+                anchor_b_price REAL,
+                anchor_b_confirmed_at TEXT NOT NULL,
+                levels_json TEXT NOT NULL,
+                matched_levels_json TEXT NOT NULL,
+                activated INTEGER DEFAULT 0,
+                activation_level REAL DEFAULT 0.0,
+                entry_time TEXT NOT NULL,
+                entry_price REAL DEFAULT 0.0,
+                stop_price REAL DEFAULT 0.0,
+                target_outcomes_json TEXT NOT NULL,
+                last_observed_candle TEXT NOT NULL,
+                source TEXT NOT NULL,
+                is_test INTEGER DEFAULT 0,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(symbol, timeframe, direction, decision_time, mode, source, is_test)
+            )
+            """)
+
             try:
                 cursor.execute("ALTER TABLE shadow_hdf_evidence ADD COLUMN source TEXT NOT NULL DEFAULT 'LIVE_PROSPECTIVE'")
             except Exception:
@@ -1279,3 +1318,69 @@ class ShadowStoreRepository:
                 "total_real_events": real_events_count,
             }
 
+    def upsert_fibonacci_telemetry(self, record: Dict[str, Any]) -> bool:
+        """Insert immutable decision snapshot; update only post-decision observation fields."""
+        columns = [
+            "telemetry_id", "research_scope", "candidate_id", "occurrence_id",
+            "symbol", "timeframe", "direction", "mode", "role", "policy_id",
+            "decision_time", "decision_status", "decision_reason",
+            "anchor_a_time", "anchor_a_price", "anchor_a_confirmed_at",
+            "anchor_b_time", "anchor_b_price", "anchor_b_confirmed_at",
+            "levels_json", "matched_levels_json", "activated", "activation_level",
+            "entry_time", "entry_price", "stop_price", "target_outcomes_json",
+            "last_observed_candle", "source", "is_test", "created_at", "updated_at",
+        ]
+        values = [record.get(col) for col in columns]
+        placeholders = ",".join("?" for _ in columns)
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                f"""
+                INSERT INTO shadow_fibonacci_telemetry ({','.join(columns)})
+                VALUES ({placeholders})
+                ON CONFLICT(telemetry_id) DO UPDATE SET
+                    activated = excluded.activated,
+                    entry_time = excluded.entry_time,
+                    entry_price = excluded.entry_price,
+                    stop_price = excluded.stop_price,
+                    target_outcomes_json = excluded.target_outcomes_json,
+                    last_observed_candle = excluded.last_observed_candle,
+                    updated_at = excluded.updated_at
+                """,
+                values,
+            )
+            conn.commit()
+        return True
+
+    def get_fibonacci_telemetry(
+        self,
+        *,
+        symbol: Optional[str] = None,
+        timeframe: Optional[str] = None,
+        mode: Optional[str] = None,
+        source: Optional[str] = "LIVE_PROSPECTIVE",
+        is_test: bool = False,
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        query = "SELECT * FROM shadow_fibonacci_telemetry WHERE 1=1"
+        params: List[Any] = []
+        if source is not None:
+            query += " AND source = ? AND is_test = ?"
+            params.extend([source, 1 if is_test else 0])
+        if symbol:
+            query += " AND symbol = ?"
+            params.append(symbol)
+        if timeframe:
+            query += " AND timeframe = ?"
+            params.append(timeframe)
+        if mode:
+            query += " AND mode = ?"
+            params.append(mode)
+        query += " ORDER BY decision_time DESC, mode ASC LIMIT ?"
+        params.append(int(limit))
+
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            return [dict(row) for row in rows]

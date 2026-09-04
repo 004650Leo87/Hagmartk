@@ -241,6 +241,20 @@ class ShadowScannerManager:
         analysis = self.strategy.evaluate_full_dataset_analysis(df_closed, symbol, timeframe)
         occurrences = analysis.get("occurrences", [])
 
+        # Fibonacci research telemetry is isolated from candidate/event promotion.
+        try:
+            from backend.services.fibonacci_prospective_telemetry import FibonacciProspectiveTelemetryEngine
+            fib_engine = FibonacciProspectiveTelemetryEngine(store=self.store)
+            fib_engine.process_occurrences(
+                symbol=symbol, timeframe=timeframe, df_closed=df_closed,
+                occurrences=occurrences, strategy=self.strategy,
+                shadow_started_at=self.shadow_started_at,
+                candidate_id=HDF_ROBUST_CANDIDATE_V1.candidate_id,
+                is_synthetic=is_synthetic,
+            )
+        except Exception as _fib_err:
+            _logger.warning("[SHADOW] Fibonacci telemetry error: %s", _fib_err)
+
         # Processa e persiste HDFEvidence para todas as divergências HDF_D (camada de evidência independente)
         self._process_hdf_evidences(symbol, timeframe, df_closed, is_synthetic)
 
