@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional
 
 from backend.domain.shadow_models import ShadowEvent, ShadowEventType, ShadowState, ShadowTransition
 from backend.services.shadow_store import ShadowStoreRepository
+from backend.services.telegram_notifier import TelegramNotifier
 
 
 class EventPublisher(ABC):
@@ -25,8 +26,9 @@ class InternalShadowPublisher(EventPublisher):
     NENHUMA mensagem externa (Telegram/WhatsApp/Push) é transmitida.
     """
 
-    def __init__(self, store: ShadowStoreRepository) -> None:
+    def __init__(self, store: ShadowStoreRepository, telegram_notifier: TelegramNotifier | None = None) -> None:
         self.store = store
+        self.telegram_notifier = telegram_notifier or TelegramNotifier()
 
     def publish(self, event_type: ShadowEventType, event: ShadowEvent, details: Dict[str, Any]) -> None:
         now_dt = datetime.now(timezone.utc)
@@ -35,17 +37,24 @@ class InternalShadowPublisher(EventPublisher):
         # Registra a transição de estado no Event Store; microsegundos + tipo evitam colisões
         # quando 1R e alvo/stop acontecem no mesmo candle/segundo.
         trans_id = f"trans_{event.event_id}_{event_type.value}_{int(now_dt.timestamp() * 1_000_000)}"
+        candle_timestamp = details.get("candle_timestamp", event.market_candle_time)
+        reason = details.get("reason", event_type.value)
+        for existing in self.store.get_transitions(event.event_id):
+            if existing.candle_timestamp == candle_timestamp and existing.reason == reason:
+                return
+
         trans = ShadowTransition(
             transition_id=trans_id,
             event_id=event.event_id,
             from_state=details.get("from_state", "UNKNOWN"),
             to_state=event.current_state,
             timestamp=now_str,
-            candle_timestamp=details.get("candle_timestamp", event.market_candle_time),
+            candle_timestamp=candle_timestamp,
             market_price=details.get("market_price", event.activation_level),
-            reason=details.get("reason", event_type.value),
+            reason=reason,
         )
         self.store.add_transition(trans)
+        self.telegram_notifier.notify_async(event_type, event, details)
 
 
 class InternalAlertEngine:

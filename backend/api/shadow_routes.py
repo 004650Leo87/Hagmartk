@@ -64,6 +64,23 @@ def get_fibonacci_research(candidate_id: str = Query("hdf_dvp_exit_2r")) -> Dict
     return _fib_engine.build_research_summary(candidate_id=candidate_id)
 
 
+@router.get("/notifications/telegram/status")
+def get_telegram_notification_status() -> Dict[str, Any]:
+    """Status seguro do canal Telegram; nunca retorna webhook, token ou chat_id."""
+    return _scanner.publisher.telegram_notifier.status()
+
+
+@router.post("/notifications/telegram/test", status_code=status.HTTP_202_ACCEPTED)
+def send_telegram_test_notification() -> Dict[str, Any]:
+    """Dispara uma mensagem de teste somente se o Telegram estiver habilitado/configurado."""
+    notifier = _scanner.publisher.telegram_notifier
+    safe_status = notifier.status()
+    if not safe_status["ready"]:
+        raise HTTPException(status_code=409, detail="Telegram is not enabled/configured")
+    accepted = notifier.send_test_async()
+    return {"accepted": accepted, **safe_status}
+
+
 @router.get("/intelligence")
 def get_shadow_intelligence(candidate_id: str = Query("hdf_dvp_exit_2r")) -> Dict[str, Any]:
     """Retorna o relatório consolidado das 9 camadas de Inteligência e Validação Prospectiva (READ-ONLY)."""

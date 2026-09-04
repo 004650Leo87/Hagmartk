@@ -4,6 +4,18 @@ $backendPort = 8010
 $frontendPort = 5180
 $apiUrl = "http://127.0.0.1:$backendPort"
 
+$telegramEnvFile = Join-Path $root 'secrets\telegram.env'
+if (Test-Path $telegramEnvFile) {
+    Get-Content $telegramEnvFile | ForEach-Object {
+        $line = $_.Trim()
+        if ($line -and -not $line.StartsWith('#') -and $line.Contains('=')) {
+            $parts = $line.Split('=', 2)
+            [Environment]::SetEnvironmentVariable($parts[0].Trim(), $parts[1].Trim(), 'Process')
+        }
+    }
+    Write-Host 'Telegram config local carregada (segredos ocultos).' -ForegroundColor DarkGreen
+}
+
 Write-Host 'HAGMARTK MF - ponte dedicada' -ForegroundColor Cyan
 Write-Host "Backend:  $apiUrl"
 Write-Host "Frontend: http://127.0.0.1:$frontendPort"
