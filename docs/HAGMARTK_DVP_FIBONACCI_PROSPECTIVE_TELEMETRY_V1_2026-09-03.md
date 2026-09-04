@@ -74,3 +74,31 @@ Using the frozen 39-combination subset (13 assets x M15/H1/H4) and a temporary S
 This is a functional harness, not prospective performance evidence.
 
 Reproduction: `python tools/audit_fibonacci_prospective_telemetry.py`.
+
+## Research-only evidence summary
+
+The Fibonacci ledger now exposes a read-only research summary that reuses the central Shadow sample-size classification without importing historical expectancy or ROI assumptions into Fibonacci research.
+
+Frozen thresholds reused only as collection-maturity labels:
+- `<20`: `INSUFFICIENT`;
+- `20-49`: `EARLY`;
+- `50-99`: `USABLE`;
+- `>=100`: `MATURE`.
+
+`PRE_REVERSAL_STRICT_V1` uses independent decision snapshots as its maturity basis because its role is confluence qualification.
+`POST_REVERSAL_PATTERN_RANGE_V1` uses resolved activated events because its role is target observation.
+
+`promotion_allowed` is always `false`. The summary cannot alter candidate/version/hash, emit orders, or promote a Fibonacci policy.
+
+## Live checkpoint after clock-integrity reset
+
+Current live report immediately after the clean restart:
+- scanner coverage: **1.0 / HEALTHY**;
+- failed scanner checks: **0**;
+- live Fibonacci records: **0**;
+- both modes: `INSUFFICIENT`;
+- reason codes include `RESEARCH_ONLY`, `NO_AUTOMATIC_PROMOTION`, `SCANNER_COVERAGE_HEALTHY`, and `NO_LIVE_FIBONACCI_EVENTS`.
+
+Reproduction:
+
+`python tools/report_fibonacci_research_status.py`

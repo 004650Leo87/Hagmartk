@@ -335,3 +335,98 @@ class FibonacciProspectiveTelemetryEngine:
                 levels,
             )
         record["target_outcomes_json"] = _json(outcomes)
+
+
+    def build_research_summary(
+        self,
+        candidate_id: str = "hdf_dvp_exit_2r",
+        *,
+        source: str = "LIVE_PROSPECTIVE",
+        is_test: bool = False,
+    ) -> Dict[str, Any]:
+        """Read-only research summary; never promotes or mutates candidate state."""
+        from collections import Counter
+        from backend.services.shadow_intelligence import SAMPLE_SIZE_THRESHOLDS, classify_sample_size
+
+        rows = self.store.get_fibonacci_telemetry(
+            source=source,
+            is_test=is_test,
+            limit=100000,
+        )
+        scanner = self.store.get_shadow_telemetry(candidate_id=candidate_id).get("global", {})
+        coverage = scanner.get("coverage")
+        health = scanner.get("health", "UNKNOWN")
+
+        modes: Dict[str, Any] = {}
+        for mode, role in ((PRE_MODE, "CONFLUENCE"), (POST_MODE, "TARGET")):
+            mode_rows = [row for row in rows if row.get("mode") == mode]
+            decision_counts = Counter(str(row.get("decision_status", "")) for row in mode_rows)
+            activated = sum(1 for row in mode_rows if int(row.get("activated") or 0) == 1)
+            resolved_events = 0
+            pending_events = 0
+            ambiguous_events = 0
+            level_states: Dict[str, Counter] = {}
+
+            if mode == POST_MODE:
+                for row in mode_rows:
+                    if int(row.get("activated") or 0) != 1:
+                        continue
+                    outcomes = json.loads(row.get("target_outcomes_json") or "{}")
+                    states = [str(payload.get("state", "")) for payload in outcomes.values()]
+                    if any(state == "AMBIGUOUS_SAME_BAR" for state in states):
+                        ambiguous_events += 1
+                    if any(state == "PENDING" for state in states):
+                        pending_events += 1
+                    elif states:
+                        resolved_events += 1
+                    for level, payload in outcomes.items():
+                        if level not in level_states:
+                            level_states[level] = Counter()
+                        level_states[level][str(payload.get("state", ""))] += 1
+
+                maturity_count = resolved_events
+                maturity_basis = "RESOLVED_ACTIVATED_EVENTS"
+            else:
+                maturity_count = len(mode_rows)
+                maturity_basis = "DECISION_SNAPSHOTS"
+
+            sample_class = classify_sample_size(maturity_count)
+            modes[mode] = {
+                "role": role,
+                "records": len(mode_rows),
+                "decision_status_counts": dict(decision_counts),
+                "activated_records": activated,
+                "resolved_events": resolved_events,
+                "pending_events": pending_events,
+                "ambiguous_events": ambiguous_events,
+                "maturity_count": maturity_count,
+                "maturity_basis": maturity_basis,
+                "sample_class": sample_class,
+                "target_level_states": {level: dict(counter) for level, counter in sorted(level_states.items())},
+            }
+
+        reason_codes = ["RESEARCH_ONLY", "NO_AUTOMATIC_PROMOTION"]
+        if coverage is None:
+            reason_codes.append("SCANNER_COVERAGE_UNKNOWN")
+        elif coverage < 0.95:
+            reason_codes.append("SCANNER_COVERAGE_DEGRADED")
+        else:
+            reason_codes.append("SCANNER_COVERAGE_HEALTHY")
+        if not rows:
+            reason_codes.append("NO_LIVE_FIBONACCI_EVENTS")
+
+        return {
+            "research_scope": RESEARCH_SCOPE,
+            "candidate_id": candidate_id,
+            "research_state": "RESEARCH_ONLY",
+            "promotion_allowed": False,
+            "sample_thresholds": dict(SAMPLE_SIZE_THRESHOLDS),
+            "scanner": {
+                "coverage": coverage,
+                "health": health,
+                "failed_checks": scanner.get("failed_checks", 0),
+            },
+            "total_records": len(rows),
+            "modes": modes,
+            "reason_codes": reason_codes,
+        }

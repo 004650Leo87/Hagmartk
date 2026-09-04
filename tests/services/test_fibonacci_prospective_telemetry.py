@@ -110,3 +110,51 @@ def test_telemetry_id_separates_live_and_test_sources():
 
     args = ("EURUSD", "H1", "BULLISH", "2026-09-03T20:00:00+00:00", "PRE_REVERSAL_STRICT_V1")
     assert _telemetry_id(*args, "LIVE_PROSPECTIVE") != _telemetry_id(*args, "TEST")
+
+
+def test_research_summary_is_read_only_and_insufficient_when_empty(tmp_path):
+    store = ShadowStoreRepository(str(tmp_path / "summary_empty.db"))
+    engine = FibonacciProspectiveTelemetryEngine(store=store)
+    summary = engine.build_research_summary()
+
+    assert summary["research_state"] == "RESEARCH_ONLY"
+    assert summary["promotion_allowed"] is False
+    assert summary["total_records"] == 0
+    assert summary["modes"]["PRE_REVERSAL_STRICT_V1"]["sample_class"] == "INSUFFICIENT"
+    assert summary["modes"]["POST_REVERSAL_PATTERN_RANGE_V1"]["sample_class"] == "INSUFFICIENT"
+    assert "NO_AUTOMATIC_PROMOTION" in summary["reason_codes"]
+
+
+def test_research_summary_reuses_central_sample_thresholds(tmp_path):
+    store = ShadowStoreRepository(str(tmp_path / "summary_thresholds.db"))
+    engine = FibonacciProspectiveTelemetryEngine(store=store)
+
+    for i in range(20):
+        decision_time = f"2026-09-03T20:{i:02d}:00+00:00"
+        pre = base_record()
+        pre.update({"telemetry_id": f"pre_{i}", "occurrence_id": f"occ_{i}", "decision_time": decision_time})
+        store.upsert_fibonacci_telemetry(pre)
+        post = base_record()
+        post.update({
+            "telemetry_id": f"post_{i}",
+            "occurrence_id": f"occ_{i}",
+            "decision_time": decision_time,
+            "mode": "POST_REVERSAL_PATTERN_RANGE_V1",
+            "role": "TARGET",
+            "decision_status": "AVAILABLE",
+            "activated": 1,
+            "target_outcomes_json": json.dumps({
+                "1.0": {"state": "TARGET_FIRST", "bars": 2, "price": 3.0},
+                "2.0": {"state": "STOP_FIRST", "bars": 5, "price": 4.0},
+            }),
+        })
+        store.upsert_fibonacci_telemetry(post)
+
+    summary = engine.build_research_summary(source="TEST", is_test=True)
+    assert summary["promotion_allowed"] is False
+    assert summary["sample_thresholds"] == {"INSUFFICIENT": 20, "EARLY": 50, "USABLE": 100}
+    assert summary["modes"]["PRE_REVERSAL_STRICT_V1"]["maturity_count"] == 20
+    assert summary["modes"]["PRE_REVERSAL_STRICT_V1"]["sample_class"] == "EARLY"
+    assert summary["modes"]["POST_REVERSAL_PATTERN_RANGE_V1"]["resolved_events"] == 20
+    assert summary["modes"]["POST_REVERSAL_PATTERN_RANGE_V1"]["sample_class"] == "EARLY"
+    assert summary["modes"]["POST_REVERSAL_PATTERN_RANGE_V1"]["target_level_states"]["1.0"]["TARGET_FIRST"] == 20
