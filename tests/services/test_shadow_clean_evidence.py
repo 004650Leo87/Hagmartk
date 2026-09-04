@@ -177,6 +177,7 @@ def test_hdf_evidence_t0_can_be_stricter_than_shadow_t0(temp_store):
         candidate_id, "2026-09-04T09:50:00+00:00"
     )
     manager = ShadowScannerManager(store=temp_store)
+    manager.runtime_started_at = "2026-09-04T09:40:00+00:00"
 
     assert manager.shadow_started_at == "2026-09-04T01:40:49+00:00"
     assert manager.evidence_started_at == "2026-09-04T09:50:00+00:00"

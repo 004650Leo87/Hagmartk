@@ -1525,6 +1525,25 @@ class ShadowStoreRepository:
             conn.commit()
         return True
 
+    def has_fibonacci_telemetry(
+        self,
+        telemetry_id: str,
+        *,
+        source: Optional[str] = None,
+        is_test: Optional[bool] = None,
+    ) -> bool:
+        query = "SELECT 1 FROM shadow_fibonacci_telemetry WHERE telemetry_id = ?"
+        params: List[Any] = [telemetry_id]
+        if source is not None:
+            query += " AND source = ?"
+            params.append(source)
+        if is_test is not None:
+            query += " AND is_test = ?"
+            params.append(1 if is_test else 0)
+        query += " LIMIT 1"
+        with self._get_connection() as conn:
+            return conn.execute(query, params).fetchone() is not None
+
     def get_fibonacci_telemetry(
         self,
         *,

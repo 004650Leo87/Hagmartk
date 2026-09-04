@@ -149,14 +149,23 @@ class FibonacciProspectiveTelemetryEngine:
             key=lambda p: p.index,
         )
 
-    def _effective_started_at(self, shadow_started_at: str) -> str:
-        shadow_dt = parse_utc_timestamp(shadow_started_at)
-        feature_dt = parse_utc_timestamp(self.started_at)
-        if shadow_dt is None:
+    def _effective_started_at(
+        self,
+        shadow_started_at: str,
+        observation_started_at: Optional[str] = None,
+    ) -> str:
+        candidates = [shadow_started_at, self.started_at]
+        if observation_started_at:
+            candidates.append(observation_started_at)
+        parsed = [
+            (parse_utc_timestamp(value), value)
+            for value in candidates
+            if value
+        ]
+        parsed = [(dt, value) for dt, value in parsed if dt is not None]
+        if not parsed:
             return self.started_at
-        if feature_dt is None:
-            return shadow_started_at
-        return self.started_at if feature_dt >= shadow_dt else shadow_started_at
+        return max(parsed, key=lambda item: item[0])[1]
 
     @staticmethod
     def _is_prospective(decision_time: str, shadow_started_at: str, is_synthetic: bool) -> bool:
@@ -178,6 +187,7 @@ class FibonacciProspectiveTelemetryEngine:
         strategy: Any,
         shadow_started_at: str,
         candidate_id: str,
+        observation_started_at: Optional[str] = None,
         is_synthetic: bool = False,
     ) -> int:
         if df_closed is None or df_closed.empty:
@@ -186,11 +196,26 @@ class FibonacciProspectiveTelemetryEngine:
         time_to_index = {str(value): i for i, value in enumerate(df_closed.time)}
         source = "TEST" if is_synthetic else "LIVE_PROSPECTIVE"
         written = 0
+        effective_started_at = self._effective_started_at(
+            shadow_started_at, observation_started_at
+        )
 
         for occ in occurrences:
             decision_time = str(occ.temporal_model.confluence_completed_at or "")
-            effective_started_at = self._effective_started_at(shadow_started_at)
-            if not decision_time or not self._is_prospective(decision_time, effective_started_at, is_synthetic):
+            if not decision_time:
+                continue
+            is_prospective = self._is_prospective(
+                decision_time, effective_started_at, is_synthetic
+            )
+            pre_id = _telemetry_id(symbol, timeframe, occ.direction, decision_time, PRE_MODE, source)
+            post_id = _telemetry_id(symbol, timeframe, occ.direction, decision_time, POST_MODE, source)
+            existing_pre = self.store.has_fibonacci_telemetry(
+                pre_id, source=source, is_test=is_synthetic
+            )
+            existing_post = self.store.has_fibonacci_telemetry(
+                post_id, source=source, is_test=is_synthetic
+            )
+            if not is_prospective and not (existing_pre or existing_post):
                 continue
             decision_index = time_to_index.get(decision_time)
             p2_index = time_to_index.get(str(occ.temporal_model.pivot_2_time))
@@ -228,8 +253,9 @@ class FibonacciProspectiveTelemetryEngine:
             )
             pre_record["evidence_snapshot_json"] = evidence_snapshot_json
             self._attach_pre_snapshot(pre_record, pre, pre_levels, df_closed)
-            self.store.upsert_fibonacci_telemetry(pre_record)
-            written += 1
+            if is_prospective or existing_pre:
+                self.store.upsert_fibonacci_telemetry(pre_record)
+                written += 1
             post_record = self._base_record(
                 candidate_id=candidate_id,
                 symbol=symbol,
@@ -249,8 +275,9 @@ class FibonacciProspectiveTelemetryEngine:
                 df_closed=df_closed,
                 time_to_index=time_to_index,
             )
-            self.store.upsert_fibonacci_telemetry(post_record)
-            written += 1
+            if is_prospective or existing_post:
+                self.store.upsert_fibonacci_telemetry(post_record)
+                written += 1
 
         return written
 

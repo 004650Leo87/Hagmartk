@@ -243,3 +243,66 @@ def test_decision_evidence_snapshot_captures_reproducibility_fields():
     assert snap["decision_candle"]["close"] == 0.8077
     assert snap["previous_candle"]["close"] == 0.8079
     assert len(snap["candidate_parameter_hash"]) == 64
+
+
+def test_recovery_cutoff_blocks_new_old_fibonacci_but_allows_existing_update(tmp_path):
+    from types import SimpleNamespace
+    from backend.services.fibonacci_prospective_telemetry import PRE_MODE, _telemetry_id
+
+    store = ShadowStoreRepository(str(tmp_path / "recovery_fib.db"))
+    engine = FibonacciProspectiveTelemetryEngine(
+        store=store, started_at="2026-09-04T10:00:00+00:00"
+    )
+    times = [
+        "2026-09-04T09:45:00+00:00",
+        "2026-09-04T10:15:00+00:00",
+        "2026-09-04T10:30:00+00:00",
+    ]
+    df = pd.DataFrame([
+        {"time": t, "open": 1.10, "high": 1.11, "low": 1.09,
+         "close": 1.10, "tick_volume": 100}
+        for t in times
+    ])
+    temporal = SimpleNamespace(
+        confluence_completed_at=times[1], pivot_2_time=times[0],
+        entry_at="", activation_time="",
+    )
+    occ = SimpleNamespace(
+        occurrence_id="occ_recovery", direction="BULLISH", state="ARMED",
+        temporal_model=temporal, pattern_low=1.09, pattern_high=1.11,
+        pattern_type="BULLISH_ENGULFING", relative_volume=1.2,
+        activation_level=1.11, initial_stop=1.09, entry_price=0.0,
+    )
+    strategy = SimpleNamespace(
+        strategy_id="hdf", version="1.0.0", variant="HDF_DVP",
+        pivot_detector=SimpleNamespace(find_pivots=lambda frame: ([], [])),
+    )
+
+    written = engine.process_occurrences(
+        symbol="EURUSD", timeframe="M15", df_closed=df,
+        occurrences=[occ], strategy=strategy,
+        shadow_started_at="2026-09-04T01:40:49+00:00",
+        candidate_id="hdf_dvp_exit_2r",
+        observation_started_at="2026-09-04T10:20:00+00:00",
+    )
+    assert written == 0
+    assert store.get_fibonacci_telemetry(source="LIVE_PROSPECTIVE", is_test=False) == []
+
+    existing = base_record()
+    existing.update({
+        "telemetry_id": _telemetry_id("EURUSD", "M15", "BULLISH", times[1], PRE_MODE, "LIVE_PROSPECTIVE"),
+        "occurrence_id": "occ_recovery", "symbol": "EURUSD", "timeframe": "M15",
+        "direction": "BULLISH", "mode": PRE_MODE, "decision_time": times[1],
+        "source": "LIVE_PROSPECTIVE", "is_test": 0,
+    })
+    store.upsert_fibonacci_telemetry(existing)
+
+    written = engine.process_occurrences(
+        symbol="EURUSD", timeframe="M15", df_closed=df,
+        occurrences=[occ], strategy=strategy,
+        shadow_started_at="2026-09-04T01:40:49+00:00",
+        candidate_id="hdf_dvp_exit_2r",
+        observation_started_at="2026-09-04T10:20:00+00:00",
+    )
+    assert written == 1
+    assert len(store.get_fibonacci_telemetry(source="LIVE_PROSPECTIVE", is_test=False)) == 1

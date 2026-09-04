@@ -91,6 +91,7 @@ class ShadowScannerManager:
     ) -> None:
         self.store = store or ShadowStoreRepository()
         self.cache = cache or OHLCDataCache()
+        self.runtime_started_at = now_utc_str()
         self.publisher = InternalShadowPublisher(self.store)
         self.provider_supported_assets = list(SHADOW_ASSETS)
         self.provider_unsupported_assets: List[str] = []
@@ -125,7 +126,8 @@ class ShadowScannerManager:
 
         # Tentar restaurar sessão Shadow persistida (Recovery)
         session = self.store.get_shadow_session(HDF_ROBUST_CANDIDATE_V1.candidate_id)
-        if session and session.get("started_at"):
+        self.shadow_session_recovered = bool(session and session.get("started_at"))
+        if self.shadow_session_recovered:
             self.enabled = session.get("enabled", True)
             self.shadow_started_at = session["started_at"]
             _logger.info(
@@ -318,6 +320,7 @@ class ShadowScannerManager:
                 occurrences=occurrences, strategy=self.strategy,
                 shadow_started_at=self.shadow_started_at,
                 candidate_id=HDF_ROBUST_CANDIDATE_V1.candidate_id,
+                observation_started_at=self.runtime_started_at,
                 is_synthetic=is_synthetic,
             )
         except Exception as _fib_err:
@@ -332,16 +335,48 @@ class ShadowScannerManager:
             state_val = occ.state.value
 
             if state_val not in (
-                "ARMED", "ACTIVATED", "TARGET_HIT", "STOP_HIT", "EXPIRED", "INVALIDATED_BEFORE_ACTIVATION"
+                "ARMED", "ACTIVATED", "TARGET_2", "TARGET_HIT",
+                "STOPPED", "STOP_HIT", "EXPIRED", "INVALIDATED_BEFORE_ACTIVATION"
             ):
                 continue
 
+            temporal = getattr(occ, "temporal_model", None)
             event_time_str = str(
-                getattr(occ, "pivot_2_time", None)
-                or getattr(getattr(occ, "temporal_model", None), "confluence_time", "")
-                or getattr(occ, "confluence_time", "")
+                getattr(temporal, "confluence_completed_at", "")
+                or getattr(temporal, "data_available_at_decision", "")
+                or getattr(temporal, "divergence_confirmed_at", "")
+                or ""
             )
+            if not event_time_str:
+                _logger.warning(
+                    "[SHADOW] OCCURRENCE_TIME_MISSING: symbol=%s tf=%s state=%s",
+                    symbol, timeframe, state_val,
+                )
+                continue
             event_dt = self._parse_event_time(event_time_str)
+            if event_dt is None:
+                _logger.warning(
+                    "[SHADOW] OCCURRENCE_TIME_INVALID: symbol=%s tf=%s state=%s value=%s",
+                    symbol, timeframe, state_val, event_time_str,
+                )
+                continue
+            runtime_dt = self._parse_event_time(self.runtime_started_at)
+            ts_val = int(event_dt.timestamp())
+            evt_id = f"evt_{symbol}_{timeframe}_{ts_val}"
+            existing_evt = self.store.get_event(evt_id)
+            if (
+                self.shadow_session_recovered
+                and not is_synthetic
+                and event_dt is not None
+                and runtime_dt is not None
+                and event_dt < runtime_dt
+                and existing_evt is None
+            ):
+                _logger.info(
+                    "[SHADOW] RECOVERY_BACKFILL_IGNORED: symbol=%s tf=%s state=%s confluence=%s runtime_start=%s",
+                    symbol, timeframe, state_val, event_time_str, self.runtime_started_at,
+                )
+                continue
 
             is_bootstrap = False
             classification = "NEW_PROSPECTIVE_EVENT"
@@ -351,10 +386,17 @@ class ShadowScannerManager:
                 if event_dt < shadow_dt:
                     # Ocorrência com referência temporal anterior a T0
                     if state_val in (
-                        "TARGET_HIT", "STOP_HIT", "EXPIRED", "INVALIDATED_BEFORE_ACTIVATION"
+                        "TARGET_2", "TARGET_HIT", "STOPPED", "STOP_HIT",
+                        "EXPIRED", "INVALIDATED_BEFORE_ACTIVATION"
                     ) or (
                         state_val == "ACTIVATED"
-                        and self._parse_event_time(str(occ.activation_time or event_time_str)) < shadow_dt
+                        and self._parse_event_time(
+                            str(
+                                getattr(temporal, "activation_time", "")
+                                or getattr(temporal, "entry_at", "")
+                                or event_time_str
+                            )
+                        ) < shadow_dt
                     ):
                         _logger.info(
                             "[SHADOW] HISTORICAL_IGNORED: symbol=%s tf=%s state=%s confluence=%s shadow_start=%s",
@@ -380,21 +422,36 @@ class ShadowScannerManager:
                         symbol, timeframe, state_val, event_time_str, self.shadow_started_at,
                     )
 
-            dir_val = getattr(occ, "direction", "BULLISH")
+            dir_val = str(getattr(occ, "direction", "BULLISH"))
             p1_price = float(getattr(occ, "price_p1", 0.0))
-            p1_time = str(getattr(occ, "pivot_1_time", ""))
+            p1_time = str(getattr(temporal, "pivot_1_time", "") or "")
             p2_price = float(getattr(occ, "price_p2", 0.0))
-            p2_time = str(getattr(occ, "pivot_2_time", ""))
+            p2_time = str(getattr(temporal, "pivot_2_time", "") or "")
             r1_rsi = float(getattr(occ, "rsi_p1", 0.0))
             r2_rsi = float(getattr(occ, "rsi_p2", 0.0))
             act_lvl = float(getattr(occ, "activation_level", 0.0))
             init_stop = float(getattr(occ, "initial_stop", 0.0))
-            ent_price = float(getattr(occ, "entry_price", 0.0))
+            ent_price = float(getattr(occ, "entry_price", 0.0) or 0.0)
+            pattern_obj = getattr(occ, "pattern_type", ReversalPatternType.NONE)
+            pattern_value = pattern_obj.value if hasattr(pattern_obj, "value") else str(pattern_obj)
+            divergence_confirmed_at = str(
+                getattr(temporal, "divergence_confirmed_at", "") or event_time_str
+            )
+            armed_at_str = str(getattr(temporal, "armed_at", "") or "")
+            activation_time_str = str(
+                getattr(temporal, "activation_time", "")
+                or getattr(temporal, "entry_at", "")
+                or ""
+            )
 
+            risk_basis = float(getattr(occ, "initial_risk", 0.0) or 0.0)
+            if risk_basis <= 0.0:
+                risk_basis = abs(act_lvl - init_stop)
+            target_base = ent_price if ent_price > 0.0 else act_lvl
             target_val = (
-                act_lvl + (2.0 * abs(act_lvl - init_stop))
+                target_base + (2.0 * risk_basis)
                 if dir_val == "BULLISH"
-                else act_lvl - (2.0 * abs(act_lvl - init_stop))
+                else target_base - (2.0 * risk_basis)
             )
 
             evi = EvidencePayload(
@@ -408,8 +465,8 @@ class ShadowScannerManager:
                 divergence_price_line=(p1_price, p2_price),
                 divergence_rsi_line=(r1_rsi, r2_rsi),
                 pattern_candle={
-                    "name": getattr(occ, "pattern_type", ""),
-                    "time": p2_time,
+                    "name": pattern_value,
+                    "time": str(getattr(temporal, "reversal_pattern_time", "") or event_time_str),
                 },
                 volume_relative=float(getattr(occ, "relative_volume", 1.0)),
                 activation_level=act_lvl,
@@ -425,26 +482,23 @@ class ShadowScannerManager:
                 c_state = ShadowState.ARMED.value
             elif state_val == "ACTIVATED":
                 c_state = ShadowState.ACTIVATED.value
-            elif state_val == "TARGET_HIT":
+            elif state_val in ("TARGET_2", "TARGET_HIT"):
                 c_state = ShadowState.TARGET_2R.value
-            elif state_val == "STOP_HIT":
+            elif state_val in ("STOPPED", "STOP_HIT"):
                 c_state = ShadowState.STOPPED.value
             elif state_val == "EXPIRED":
                 c_state = ShadowState.EXPIRED.value
             else:
                 c_state = ShadowState.INVALIDATED.value
 
-            ts_val = (
-                int(pd.Timestamp(event_time_str).timestamp())
-                if (event_time_str and event_time_str != "None" and not pd.isna(pd.Timestamp(event_time_str)))
-                else int(pd.Timestamp.now(timezone.utc).timestamp())
+            initial_risk = risk_basis
+            target_2r = target_val
+            event_entry_price = ent_price if ent_price > 0.0 else (
+                act_lvl if state_val in ("ACTIVATED", "TARGET_2", "TARGET_HIT", "STOPPED", "STOP_HIT") else 0.0
             )
-            evt_id = f"evt_{symbol}_{timeframe}_{ts_val}"
-            initial_risk = abs(act_lvl - init_stop)
-            target_2r = (
-                act_lvl + (2.0 * initial_risk)
-                if dir_val == "BULLISH"
-                else act_lvl - (2.0 * initial_risk)
+            volume_source_obj = getattr(occ, "volume_source", "TICK_VOLUME")
+            volume_source_value = (
+                volume_source_obj.value if hasattr(volume_source_obj, "value") else str(volume_source_obj)
             )
 
             evt = ShadowEvent(
@@ -455,24 +509,25 @@ class ShadowScannerManager:
                 symbol=symbol,
                 asset_class=get_asset_class(symbol),
                 timeframe=timeframe,
-                direction=occ.divergence.direction,
-                pattern_type=occ.pattern.pattern_type if occ.pattern else "CONFLUENCE_PATTERN",
-                pivot_1_time=str(occ.divergence.pivot1.time),
-                pivot_1_price=occ.divergence.pivot1.price,
-                pivot_1_rsi=occ.divergence.pivot1.rsi,
-                pivot_2_time=str(occ.divergence.pivot2.time),
-                pivot_2_price=occ.divergence.pivot2.price,
-                pivot_2_rsi=occ.divergence.pivot2.rsi,
-                divergence_confirmed_at=event_time_str,
-                relative_volume=occ.divergence.candle2.relative_volume,
+                direction=dir_val,
+                pattern_type=pattern_value,
+                pivot_1_time=p1_time,
+                pivot_1_price=p1_price,
+                pivot_1_rsi=r1_rsi,
+                pivot_2_time=p2_time,
+                pivot_2_price=p2_price,
+                pivot_2_rsi=r2_rsi,
+                divergence_confirmed_at=divergence_confirmed_at,
+                relative_volume=float(getattr(occ, "relative_volume", 1.0)),
+                volume_source=volume_source_value,
                 confluence_time=event_time_str,
-                armed_at=event_time_str if state_val in ("ARMED", "ACTIVATED", "TARGET_HIT", "STOP_HIT") else "",
-                activation_level=occ.activation_level,
-                activated_at=str(occ.activation_time) if occ.activation_time else "",
-                entry_price=occ.activation_price or (
-                    occ.activation_level if state_val in ("ACTIVATED", "TARGET_HIT", "STOP_HIT") else 0.0
-                ),
-                initial_stop=occ.initial_stop,
+                armed_at=armed_at_str if state_val in (
+                    "ARMED", "ACTIVATED", "TARGET_2", "TARGET_HIT", "STOPPED", "STOP_HIT"
+                ) else "",
+                activation_level=act_lvl,
+                activated_at=activation_time_str,
+                entry_price=event_entry_price,
+                initial_stop=init_stop,
                 target_2R=target_2r,
                 initial_risk=initial_risk,
                 current_state=c_state,
@@ -499,7 +554,7 @@ class ShadowScannerManager:
                     post_df = df_closed.iloc[act_idx + 1 :]
                     evt.bars_since_activation = len(post_df)
                     if not post_df.empty and initial_risk > 0:
-                        if occ.divergence.direction == "BULLISH":
+                        if dir_val == "BULLISH":
                             max_h = post_df["high"].max()
                             min_l = post_df["low"].min()
                             mfe_r = (max_h - evt.entry_price) / initial_risk
@@ -663,11 +718,14 @@ class ShadowScannerManager:
         detected_dt = self._parse_event_time(detected_at)
         shadow_dt = self._parse_shadow_started_at()
         evidence_dt = self._parse_event_time(getattr(self, "evidence_started_at", ""))
+        runtime_dt = self._parse_event_time(getattr(self, "runtime_started_at", ""))
         if detected_dt is None or shadow_dt is None:
             return False
         lower_bound = shadow_dt
         if evidence_dt is not None and evidence_dt > lower_bound:
             lower_bound = evidence_dt
+        if runtime_dt is not None and runtime_dt > lower_bound:
+            lower_bound = runtime_dt
         return detected_dt >= lower_bound
 
     def _process_hdf_evidences(
