@@ -143,6 +143,16 @@ class ShadowStoreRepository:
             )
             """)
 
+            # Provider support snapshot: configured universe vs symbols actually available in runtime.
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS shadow_provider_support (
+                symbol TEXT PRIMARY KEY,
+                supported INTEGER NOT NULL,
+                reason TEXT NOT NULL,
+                checked_at TEXT NOT NULL
+            )
+            """)
+
             # Tabela shadow_scanner_telemetry para observabilidade operacional V1
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS shadow_scanner_telemetry (
@@ -320,6 +330,36 @@ class ShadowStoreRepository:
                     "updated_at": r["updated_at"],
                 }
             return None
+
+    def save_provider_support(self, symbol: str, supported: bool, reason: str, checked_at: str) -> None:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO shadow_provider_support (symbol, supported, reason, checked_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(symbol) DO UPDATE SET
+                    supported = excluded.supported,
+                    reason = excluded.reason,
+                    checked_at = excluded.checked_at
+                """,
+                (symbol.upper(), 1 if supported else 0, reason, checked_at),
+            )
+            conn.commit()
+
+    def get_provider_support(self) -> Dict[str, Dict[str, Any]]:
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT symbol, supported, reason, checked_at FROM shadow_provider_support")
+            rows = cursor.fetchall()
+            return {
+                str(r["symbol"]): {
+                    "supported": bool(r["supported"]),
+                    "reason": str(r["reason"]),
+                    "checked_at": str(r["checked_at"]),
+                }
+                for r in rows
+            }
 
     def save_event(self, evt: ShadowEvent, dedup_key: str = "") -> bool:
         """Salva um novo evento Shadow se não existir (idempotência via dedup_key)."""
@@ -881,12 +921,18 @@ class ShadowStoreRepository:
             conn.commit()
 
     def get_shadow_telemetry(self, candidate_id: str = "hdf_dvp_exit_2r") -> Dict[str, Any]:
-        """Retorna o relatório completo de telemetria e cobertura de varredura do Shadow Mode."""
+        """Coverage of provider-supported Shadow combinations; configured universe remains auditable."""
         from backend.services.shadow_scanner import SHADOW_ASSETS, SHADOW_TIMEFRAMES, get_asset_class
+
+        provider_support = self.get_provider_support()
+        supported_assets = [
+            sym for sym in SHADOW_ASSETS
+            if provider_support.get(sym, {}).get("supported", True)
+        ]
+        unsupported_assets = [sym for sym in SHADOW_ASSETS if sym not in supported_assets]
 
         with self._get_connection() as conn:
             cursor = conn.cursor()
-
             combinations_telemetry = []
             tot_expected = 0
             tot_successful = 0
@@ -894,15 +940,14 @@ class ShadowStoreRepository:
             global_last_activity: Optional[str] = None
 
             for sym in SHADOW_ASSETS:
+                provider_supported = sym in supported_assets
+                support_reason = provider_support.get(sym, {}).get("reason", "SUPPORT_UNKNOWN_ASSUME_CONFIGURED")
                 for tf in SHADOW_TIMEFRAMES:
                     cursor.execute(
                         """
-                        SELECT SUM(expected_checks) as sum_exp,
-                               SUM(successful_checks) as sum_succ,
-                               SUM(failed_checks) as sum_fail,
-                               MAX(last_success_at) as max_succ_at,
-                               MAX(last_failure_at) as max_fail_at,
-                               MAX(updated_at) as max_upd_at
+                        SELECT SUM(expected_checks) as sum_exp, SUM(successful_checks) as sum_succ,
+                               SUM(failed_checks) as sum_fail, MAX(last_success_at) as max_succ_at,
+                               MAX(last_failure_at) as max_fail_at, MAX(updated_at) as max_upd_at
                         FROM shadow_scanner_telemetry
                         WHERE candidate_id = ? AND symbol = ? AND timeframe = ?
                         """,
@@ -916,16 +961,17 @@ class ShadowStoreRepository:
                     last_fail = row["max_fail_at"] if row else None
                     last_act = (row["max_upd_at"] if row else None) or last_succ
 
-                    if last_act and (global_last_activity is None or last_act > global_last_activity):
-                        global_last_activity = last_act
-
-                    tot_expected += exp
-                    tot_successful += succ
-                    tot_failed += fail
+                    if provider_supported:
+                        if last_act and (global_last_activity is None or last_act > global_last_activity):
+                            global_last_activity = last_act
+                        tot_expected += exp
+                        tot_successful += succ
+                        tot_failed += fail
 
                     cov = round(succ / exp, 4) if exp > 0 else None
-
-                    if exp == 0:
+                    if not provider_supported:
+                        health = "UNSUPPORTED_BY_PROVIDER"
+                    elif exp == 0:
                         health = "UNKNOWN"
                     elif cov is not None and cov >= 0.95:
                         health = "HEALTHY"
@@ -935,20 +981,15 @@ class ShadowStoreRepository:
                         health = "UNAVAILABLE"
 
                     combinations_telemetry.append({
-                        "symbol": sym,
-                        "asset_class": get_asset_class(sym),
-                        "timeframe": tf,
-                        "expected_checks": exp,
-                        "successful_checks": succ,
-                        "failed_checks": fail,
-                        "coverage": cov,
-                        "last_success_at": last_succ,
-                        "last_failure_at": last_fail,
+                        "symbol": sym, "asset_class": get_asset_class(sym), "timeframe": tf,
+                        "provider_supported": provider_supported, "support_reason": support_reason,
+                        "coverage_included": provider_supported,
+                        "expected_checks": exp, "successful_checks": succ, "failed_checks": fail,
+                        "coverage": cov, "last_success_at": last_succ, "last_failure_at": last_fail,
                         "health": health,
                     })
 
             global_cov = round(tot_successful / tot_expected, 4) if tot_expected > 0 else None
-
             if tot_expected == 0:
                 global_health = "UNKNOWN"
             elif global_cov is not None and global_cov >= 0.95:
@@ -961,13 +1002,14 @@ class ShadowStoreRepository:
             return {
                 "candidate_id": candidate_id,
                 "global": {
-                    "total_combinations": 39,
-                    "expected_checks": tot_expected,
-                    "successful_checks": tot_successful,
-                    "failed_checks": tot_failed,
-                    "coverage": global_cov,
-                    "health": global_health,
-                    "last_activity_at": global_last_activity,
+                    "total_combinations": len(SHADOW_ASSETS) * len(SHADOW_TIMEFRAMES),
+                    "configured_combinations": len(SHADOW_ASSETS) * len(SHADOW_TIMEFRAMES),
+                    "provider_supported_combinations": len(supported_assets) * len(SHADOW_TIMEFRAMES),
+                    "provider_unsupported_combinations": len(unsupported_assets) * len(SHADOW_TIMEFRAMES),
+                    "unsupported_symbols": unsupported_assets,
+                    "expected_checks": tot_expected, "successful_checks": tot_successful,
+                    "failed_checks": tot_failed, "coverage": global_cov,
+                    "health": global_health, "last_activity_at": global_last_activity,
                 },
                 "combinations": combinations_telemetry,
             }

@@ -42,6 +42,21 @@ def get_asset_class(symbol: str) -> str:
     return "UNKNOWN"
 
 
+def resolve_supported_shadow_assets(adapter: Any) -> tuple[List[str], List[str]]:
+    """Resolve configured Shadow assets against the current provider catalog."""
+    rows = adapter.get_symbols()
+    names = {
+        str(item.get("symbol") or item.get("name") or "").upper().strip()
+        for item in rows
+        if isinstance(item, dict)
+    }
+    if not names:
+        raise RuntimeError("Provider symbol catalog is empty; support state cannot be resolved")
+    supported = [sym for sym in SHADOW_ASSETS if sym.upper() in names]
+    unsupported = [sym for sym in SHADOW_ASSETS if sym.upper() not in names]
+    return supported, unsupported
+
+
 def get_only_closed_candles(
     df: pd.DataFrame, timeframe: str, now_dt: Optional[datetime] = None
 ) -> pd.DataFrame:
@@ -77,6 +92,20 @@ class ShadowScannerManager:
         self.store = store or ShadowStoreRepository()
         self.cache = cache or OHLCDataCache()
         self.publisher = InternalShadowPublisher(self.store)
+        self.provider_supported_assets = list(SHADOW_ASSETS)
+        self.provider_unsupported_assets: List[str] = []
+        self.provider_support_checked_at = ""
+        persisted_support = self.store.get_provider_support()
+        if persisted_support:
+            self.provider_supported_assets = [
+                sym for sym in SHADOW_ASSETS
+                if persisted_support.get(sym, {}).get("supported", True)
+            ]
+            self.provider_unsupported_assets = [
+                sym for sym in SHADOW_ASSETS if sym not in self.provider_supported_assets
+            ]
+            checked = [v.get("checked_at", "") for v in persisted_support.values()]
+            self.provider_support_checked_at = max(checked) if checked else ""
 
         self.strategy = HDFStrategy(
             variant="HDF_DVP",
@@ -145,6 +174,38 @@ class ShadowScannerManager:
                     st.enabled = False
                     st.scanner_status = ScannerStatus.DISABLED.value
                     self.store.save_scanner_state(st)
+
+    def refresh_provider_support(self, adapter: Any) -> tuple[List[str], List[str]]:
+        supported, unsupported = resolve_supported_shadow_assets(adapter)
+        checked_at = now_utc_str()
+        self.provider_supported_assets = list(supported)
+        self.provider_unsupported_assets = list(unsupported)
+        self.provider_support_checked_at = checked_at
+
+        for sym in SHADOW_ASSETS:
+            is_supported = sym in supported
+            reason = "AVAILABLE_IN_PROVIDER_CATALOG" if is_supported else "UNSUPPORTED_BY_PROVIDER"
+            self.store.save_provider_support(sym, is_supported, reason, checked_at)
+            for tf in SHADOW_TIMEFRAMES:
+                st = self.store.get_scanner_state(
+                    HDF_ROBUST_CANDIDATE_V1.candidate_id, sym, tf
+                ) or ShadowScannerState(
+                    candidate_id=HDF_ROBUST_CANDIDATE_V1.candidate_id, symbol=sym, timeframe=tf
+                )
+                if is_supported:
+                    if st.scanner_status == ScannerStatus.UNSUPPORTED_BY_PROVIDER.value:
+                        st.scanner_status = ScannerStatus.RUNNING.value
+                else:
+                    st.scanner_status = ScannerStatus.UNSUPPORTED_BY_PROVIDER.value
+                    st.last_scan_at = checked_at
+                    st.error_message = ""
+                self.store.save_scanner_state(st)
+
+        _logger.info(
+            "[SHADOW] Provider support resolved: supported=%d unsupported=%s",
+            len(supported), unsupported,
+        )
+        return supported, unsupported
 
     def scan_closed_candle(
         self,
@@ -524,6 +585,7 @@ class ShadowScannerManager:
 
         def _worker():
             _logger.info("[SHADOW] Scheduler autônomo iniciado (intervalo=%.1fs)", interval_seconds)
+            next_support_refresh = 0.0
             while getattr(self, "_scheduler_running", False):
                 try:
                     current_adapter = adapter
@@ -536,6 +598,14 @@ class ShadowScannerManager:
                     except Exception:
                         pass
 
+                    support_now = time.monotonic()
+                    if support_now >= next_support_refresh:
+                        try:
+                            self.refresh_provider_support(current_adapter)
+                        except Exception as _support_err:
+                            _logger.warning("[SHADOW] Provider support refresh failed: %s", _support_err)
+                        next_support_refresh = support_now + 60.0
+
                     import MetaTrader5 as mt5
                     tf_map = {
                         "M15": getattr(mt5, "TIMEFRAME_M15", 15),
@@ -543,7 +613,7 @@ class ShadowScannerManager:
                         "H4": getattr(mt5, "TIMEFRAME_H4", 16388),
                     }
 
-                    for sym in SHADOW_ASSETS:
+                    for sym in self.provider_supported_assets:
                         for tf in SHADOW_TIMEFRAMES:
                             if not getattr(self, "_scheduler_running", False):
                                 break

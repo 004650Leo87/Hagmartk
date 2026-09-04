@@ -152,6 +152,7 @@ def get_hdf_scanner_coverage() -> Dict[str, Any]:
     recent_count = 0
     stale_count = 0
     error_count = 0
+    unsupported_count = 0
     now_dt = parse_utc_timestamp(now_utc_str())
 
     for sym in SHADOW_ASSETS:
@@ -165,9 +166,13 @@ def get_hdf_scanner_coverage() -> Dict[str, Any]:
                 active_count += 1
             if status_val == "ERROR":
                 error_count += 1
+            if status_val == "UNSUPPORTED_BY_PROVIDER":
+                unsupported_count += 1
 
             is_recent = False
-            if last_scan and now_dt:
+            if status_val == "UNSUPPORTED_BY_PROVIDER":
+                pass
+            elif last_scan and now_dt:
                 dt_scan = parse_utc_timestamp(last_scan)
                 if dt_scan and (now_dt - dt_scan).total_seconds() < 900:  # 15 min
                     is_recent = True
@@ -182,6 +187,7 @@ def get_hdf_scanner_coverage() -> Dict[str, Any]:
                 "timeframe": tf,
                 "enabled": st.enabled if st else True,
                 "status": status_val,
+                "provider_supported": status_val != "UNSUPPORTED_BY_PROVIDER",
                 "last_processed_candle": st.last_processed_candle if st else "",
                 "last_scan_at": last_scan,
                 "is_recent": is_recent,
@@ -197,6 +203,7 @@ def get_hdf_scanner_coverage() -> Dict[str, Any]:
         "recently_scanned": recent_count,
         "stale": stale_count,
         "errors": error_count,
+        "unsupported_by_provider": unsupported_count,
         "xauusd": xauusd_coverage,
         "combinations": combinations,
     }
@@ -258,7 +265,10 @@ def get_shadow_status() -> Dict[str, Any]:
         "mode": "SHADOW",
         "enabled": _scanner.enabled,
         "started_at": _scanner.shadow_started_at,
-        "monitored_combinations": len(SHADOW_ASSETS) * len(SHADOW_TIMEFRAMES),
+        "configured_combinations": len(SHADOW_ASSETS) * len(SHADOW_TIMEFRAMES),
+        "monitored_combinations": len(_scanner.provider_supported_assets) * len(SHADOW_TIMEFRAMES),
+        "unsupported_symbols": list(_scanner.provider_unsupported_assets),
+        "provider_support_checked_at": _scanner.provider_support_checked_at,
         "total_events": stats.total_events_detected,
         "active_events": stats.open_count + stats.armed_count,
         "external_publishing": "DISABLED",

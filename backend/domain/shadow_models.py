@@ -28,6 +28,7 @@ class ScannerStatus(str, Enum):
     DISABLED = "DISABLED"
     ERROR = "ERROR"
     RECOVERING = "RECOVERING"
+    UNSUPPORTED_BY_PROVIDER = "UNSUPPORTED_BY_PROVIDER"
 
 
 class ShadowEventType(str, Enum):
