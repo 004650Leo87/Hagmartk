@@ -143,6 +143,13 @@ class ShadowScannerManager:
                 self.shadow_started_at,
             )
 
+        evidence_session = self.store.get_evidence_session(HDF_ROBUST_CANDIDATE_V1.candidate_id)
+        self.evidence_started_at = (
+            evidence_session["started_at"]
+            if evidence_session and evidence_session.get("started_at")
+            else self.shadow_started_at
+        )
+
     def enable_shadow(self) -> None:
         self.enabled = True
         if not self.shadow_started_at:
@@ -655,9 +662,13 @@ class ShadowScannerManager:
             return True
         detected_dt = self._parse_event_time(detected_at)
         shadow_dt = self._parse_shadow_started_at()
+        evidence_dt = self._parse_event_time(getattr(self, "evidence_started_at", ""))
         if detected_dt is None or shadow_dt is None:
             return False
-        return detected_dt >= shadow_dt
+        lower_bound = shadow_dt
+        if evidence_dt is not None and evidence_dt > lower_bound:
+            lower_bound = evidence_dt
+        return detected_dt >= lower_bound
 
     def _process_hdf_evidences(
         self,

@@ -137,3 +137,53 @@ def test_xauusd_scanner_state_telemetry(temp_store):
         st_updated = temp_store.get_scanner_state(cid, "XAUUSD", tf)
         assert st_updated is not None
         assert st_updated.scanner_status == "RUNNING"
+
+
+def test_hdf_decision_snapshot_is_immutable_on_rescan(temp_store):
+    first = HDFEvidence(
+        evidence_id="ev_immutable_first", symbol="USDCHF", timeframe="M15", asset_class="FOREX",
+        direction="BEARISH", pivot_1_time="t1", pivot_1_price=0.8080, pivot_1_rsi=60.0,
+        pivot_2_time="t2", pivot_2_price=0.8081, pivot_2_rsi=55.0,
+        relative_volume=1.6, volume_pass=True, pattern_type="BEARISH_ENGULFING",
+        pattern_pass=True, variant_stage="HDF_DVP", candidate_created=True, armed=True,
+        source="LIVE_PROSPECTIVE", is_test=False, detected_at="2026-09-04T01:45:00+00:00",
+    )
+    later = HDFEvidence(
+        evidence_id="ev_immutable_later", symbol="USDCHF", timeframe="M15", asset_class="FOREX",
+        direction="BEARISH", pivot_1_time="t1b", pivot_1_price=0.8080, pivot_1_rsi=59.0,
+        pivot_2_time="t2", pivot_2_price=0.8081, pivot_2_rsi=54.0,
+        relative_volume=0.7, volume_pass=False, pattern_type="NONE",
+        pattern_pass=False, variant_stage="HDF_D", candidate_created=False, armed=False,
+        source="LIVE_PROSPECTIVE", is_test=False, detected_at="2026-09-04T02:00:00+00:00",
+    )
+    temp_store.save_hdf_evidence(first)
+    temp_store.save_hdf_evidence(later)
+
+    saved = temp_store.get_hdf_evidence("ev_immutable_first")
+    assert saved is not None
+    assert saved.variant_stage == "HDF_DVP"
+    assert saved.relative_volume == 1.6
+    assert saved.pattern_pass is True
+    assert saved.candidate_created is True
+    assert temp_store.get_hdf_evidence("ev_immutable_later") is None
+
+
+def test_hdf_evidence_t0_can_be_stricter_than_shadow_t0(temp_store):
+    candidate_id = HDF_ROBUST_CANDIDATE_V1.candidate_id
+    temp_store.save_shadow_session(
+        candidate_id, "2026-09-04T01:40:49+00:00", True
+    )
+    temp_store.save_evidence_session(
+        candidate_id, "2026-09-04T09:50:00+00:00"
+    )
+    manager = ShadowScannerManager(store=temp_store)
+
+    assert manager.shadow_started_at == "2026-09-04T01:40:49+00:00"
+    assert manager.evidence_started_at == "2026-09-04T09:50:00+00:00"
+    assert manager._should_persist_hdf_evidence(
+        "2026-09-04T09:49:59+00:00", False
+    ) is False
+    assert manager._should_persist_hdf_evidence(
+        "2026-09-04T09:50:00+00:00", False
+    ) is True
+    assert manager._should_persist_hdf_evidence("old", True) is True

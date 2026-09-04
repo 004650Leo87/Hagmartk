@@ -17,6 +17,7 @@ from backend.strategies.hdf.prospective_fibonacci import (
 PRE_MODE = "PRE_REVERSAL_STRICT_V1"
 POST_MODE = "POST_REVERSAL_PATTERN_RANGE_V1"
 RESEARCH_SCOPE = "HDF_FIBONACCI_RESEARCH_V1"
+EVIDENCE_SNAPSHOT_SCHEMA = "HDF_FIB_DECISION_EVIDENCE_V1"
 
 
 def _telemetry_id(symbol: str, timeframe: str, direction: str, decision_time: str, mode: str, source: str) -> str:
@@ -26,6 +27,51 @@ def _telemetry_id(symbol: str, timeframe: str, direction: str, decision_time: st
 
 def _json(data: Any) -> str:
     return json.dumps(data, sort_keys=True, separators=(",", ":"))
+
+
+def _enum_value(value: Any) -> str:
+    return str(value.value) if hasattr(value, "value") else str(value)
+
+
+def _candle_snapshot(row: Any) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {}
+    for key in ("time", "open", "high", "low", "close", "tick_volume", "real_volume", "volume"):
+        if key not in row.index:
+            continue
+        value = row[key]
+        if key == "time":
+            payload[key] = str(value)
+        else:
+            try:
+                payload[key] = float(value)
+            except (TypeError, ValueError):
+                payload[key] = str(value)
+    return payload
+
+
+def _decision_evidence_snapshot(strategy: Any, occ: Any, df: pd.DataFrame, decision_index: int) -> Dict[str, Any]:
+    from backend.domain.candidate import HDF_CANDIDATE_V1_PARAMETER_HASH
+
+    current = _candle_snapshot(df.iloc[decision_index])
+    previous = _candle_snapshot(df.iloc[decision_index - 1]) if decision_index > 0 else {}
+    return {
+        "schema_version": EVIDENCE_SNAPSHOT_SCHEMA,
+        "candidate_parameter_hash": HDF_CANDIDATE_V1_PARAMETER_HASH,
+        "strategy_id": str(getattr(strategy, "strategy_id", "")),
+        "strategy_version": str(getattr(strategy, "version", "")),
+        "strategy_variant": str(getattr(strategy, "variant", "")),
+        "occurrence_id": str(getattr(occ, "occurrence_id", "")),
+        "occurrence_state": _enum_value(getattr(occ, "state", "")),
+        "pattern_type": _enum_value(getattr(occ, "pattern_type", "")),
+        "pattern_low": float(getattr(occ, "pattern_low", 0.0) or 0.0),
+        "pattern_high": float(getattr(occ, "pattern_high", 0.0) or 0.0),
+        "relative_volume": float(getattr(occ, "relative_volume", 0.0) or 0.0),
+        "activation_level": float(getattr(occ, "activation_level", 0.0) or 0.0),
+        "initial_stop": float(getattr(occ, "initial_stop", 0.0) or 0.0),
+        "entry_at": str(getattr(getattr(occ, "temporal_model", None), "entry_at", "") or ""),
+        "decision_candle": current,
+        "previous_candle": previous,
+    }
 
 
 def _target_terminal(
@@ -151,6 +197,10 @@ class FibonacciProspectiveTelemetryEngine:
             if decision_index is None or p2_index is None:
                 continue
 
+            evidence_snapshot_json = _json(
+                _decision_evidence_snapshot(strategy, occ, df_closed, decision_index)
+            )
+
             pre = audit_strict_pre_reversal_leg(
                 direction=occ.direction,
                 pivots=pivots,
@@ -176,6 +226,7 @@ class FibonacciProspectiveTelemetryEngine:
                 source=source,
                 is_synthetic=is_synthetic,
             )
+            pre_record["evidence_snapshot_json"] = evidence_snapshot_json
             self._attach_pre_snapshot(pre_record, pre, pre_levels, df_closed)
             self.store.upsert_fibonacci_telemetry(pre_record)
             written += 1
@@ -191,6 +242,7 @@ class FibonacciProspectiveTelemetryEngine:
                 source=source,
                 is_synthetic=is_synthetic,
             )
+            post_record["evidence_snapshot_json"] = evidence_snapshot_json
             self._attach_post_snapshot_and_outcomes(
                 post_record,
                 occ=occ,
@@ -239,6 +291,7 @@ class FibonacciProspectiveTelemetryEngine:
             "anchor_b_confirmed_at": "",
             "levels_json": "{}",
             "matched_levels_json": "[]",
+            "evidence_snapshot_json": "{}",
             "activated": 1 if getattr(occ.temporal_model, "entry_at", "") else 0,
             "activation_level": float(getattr(occ, "activation_level", 0.0) or 0.0),
             "entry_time": str(getattr(occ.temporal_model, "entry_at", "") or ""),
@@ -357,20 +410,53 @@ class FibonacciProspectiveTelemetryEngine:
         coverage = scanner.get("coverage")
         health = scanner.get("health", "UNKNOWN")
 
+        def snapshot_attested(row: Dict[str, Any]) -> bool:
+            try:
+                payload = json.loads(row.get("evidence_snapshot_json") or "{}")
+            except (TypeError, ValueError, json.JSONDecodeError):
+                return False
+            return payload.get("schema_version") == EVIDENCE_SNAPSHOT_SCHEMA
+
+        pre_rows = [row for row in rows if row.get("mode") == PRE_MODE]
+        pre_by_occurrence = {str(row.get("occurrence_id", "")): row for row in pre_rows}
+        unattested_total = sum(1 for row in rows if not snapshot_attested(row))
+
         modes: Dict[str, Any] = {}
         for mode, role in ((PRE_MODE, "CONFLUENCE"), (POST_MODE, "TARGET")):
             mode_rows = [row for row in rows if row.get("mode") == mode]
+            attested_rows = [row for row in mode_rows if snapshot_attested(row)]
             decision_counts = Counter(str(row.get("decision_status", "")) for row in mode_rows)
             activated = sum(1 for row in mode_rows if int(row.get("activated") or 0) == 1)
             resolved_events = 0
             pending_events = 0
             ambiguous_events = 0
             level_states: Dict[str, Counter] = {}
+            excluded = Counter()
+            cohort_eligible_records = 0
 
             if mode == POST_MODE:
+                eligible_rows = []
                 for row in mode_rows:
-                    if int(row.get("activated") or 0) != 1:
+                    if not snapshot_attested(row):
+                        excluded["UNATTESTED_SNAPSHOT"] += 1
                         continue
+                    pre_row = pre_by_occurrence.get(str(row.get("occurrence_id", "")))
+                    if pre_row is None:
+                        excluded["PRE_RECORD_MISSING"] += 1
+                        continue
+                    if not snapshot_attested(pre_row):
+                        excluded["PRE_UNATTESTED_SNAPSHOT"] += 1
+                        continue
+                    if str(pre_row.get("decision_status", "")) != "PASS":
+                        excluded["PRE_GATE_NOT_PASS"] += 1
+                        continue
+                    if int(row.get("activated") or 0) != 1:
+                        excluded["NOT_ACTIVATED"] += 1
+                        continue
+                    eligible_rows.append(row)
+
+                cohort_eligible_records = len(eligible_rows)
+                for row in eligible_rows:
                     outcomes = json.loads(row.get("target_outcomes_json") or "{}")
                     states = [str(payload.get("state", "")) for payload in outcomes.values()]
                     if any(state == "AMBIGUOUS_SAME_BAR" for state in states):
@@ -385,17 +471,24 @@ class FibonacciProspectiveTelemetryEngine:
                         level_states[level][str(payload.get("state", ""))] += 1
 
                 maturity_count = resolved_events
-                maturity_basis = "RESOLVED_ACTIVATED_EVENTS"
+                maturity_basis = "RESOLVED_ACTIVATED_PRE_PASS_ATTESTED_EVENTS"
             else:
-                maturity_count = len(mode_rows)
-                maturity_basis = "DECISION_SNAPSHOTS"
+                cohort_eligible_records = len(attested_rows)
+                if len(attested_rows) < len(mode_rows):
+                    excluded["UNATTESTED_SNAPSHOT"] = len(mode_rows) - len(attested_rows)
+                maturity_count = len(attested_rows)
+                maturity_basis = "ATTESTED_DECISION_SNAPSHOTS"
 
             sample_class = classify_sample_size(maturity_count)
             modes[mode] = {
                 "role": role,
                 "records": len(mode_rows),
+                "attested_records": len(attested_rows),
+                "unattested_records": len(mode_rows) - len(attested_rows),
                 "decision_status_counts": dict(decision_counts),
                 "activated_records": activated,
+                "cohort_eligible_records": cohort_eligible_records,
+                "cohort_excluded_counts": dict(excluded),
                 "resolved_events": resolved_events,
                 "pending_events": pending_events,
                 "ambiguous_events": ambiguous_events,
@@ -414,6 +507,10 @@ class FibonacciProspectiveTelemetryEngine:
             reason_codes.append("SCANNER_COVERAGE_HEALTHY")
         if not rows:
             reason_codes.append("NO_LIVE_FIBONACCI_EVENTS")
+        if unattested_total:
+            reason_codes.append("UNATTESTED_LEGACY_RECORDS")
+        if rows and modes.get(POST_MODE, {}).get("cohort_eligible_records", 0) == 0:
+            reason_codes.append("NO_ELIGIBLE_TARGET_COHORT")
 
         return {
             "research_scope": RESEARCH_SCOPE,

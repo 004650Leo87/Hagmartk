@@ -153,6 +153,17 @@ class ShadowStoreRepository:
             )
             """)
 
+            # Independent HDF-evidence T0. Used to start a clean immutable evidence cohort
+            # without resetting the broader Shadow session.
+            cursor.execute("""
+            CREATE TABLE IF NOT EXISTS shadow_evidence_session (
+                candidate_id TEXT PRIMARY KEY,
+                started_at TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """)
+
             # Provider support snapshot: configured universe vs symbols actually available in runtime.
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS shadow_provider_support (
@@ -284,6 +295,7 @@ class ShadowStoreRepository:
                 anchor_b_confirmed_at TEXT NOT NULL,
                 levels_json TEXT NOT NULL,
                 matched_levels_json TEXT NOT NULL,
+                evidence_snapshot_json TEXT NOT NULL DEFAULT '{}',
                 activated INTEGER DEFAULT 0,
                 activation_level REAL DEFAULT 0.0,
                 entry_time TEXT NOT NULL,
@@ -301,6 +313,11 @@ class ShadowStoreRepository:
 
             try:
                 cursor.execute("ALTER TABLE shadow_hdf_evidence ADD COLUMN source TEXT NOT NULL DEFAULT 'LIVE_PROSPECTIVE'")
+            except Exception:
+                pass
+
+            try:
+                cursor.execute("ALTER TABLE shadow_fibonacci_telemetry ADD COLUMN evidence_snapshot_json TEXT NOT NULL DEFAULT '{}'")
             except Exception:
                 pass
 
@@ -362,6 +379,32 @@ class ShadowStoreRepository:
         with self._get_connection() as conn:
             row = conn.execute(
                 "SELECT candidate_id, started_at, created_at, updated_at FROM shadow_telemetry_session WHERE candidate_id = ?",
+                (candidate_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            return {key: str(row[key]) for key in ("candidate_id", "started_at", "created_at", "updated_at")}
+
+    def save_evidence_session(self, candidate_id: str, started_at: str) -> None:
+        from backend.core.time_utils import now_utc_str
+        now_str = now_utc_str()
+        with self._get_connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO shadow_evidence_session (candidate_id, started_at, created_at, updated_at)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(candidate_id) DO UPDATE SET
+                    started_at = excluded.started_at,
+                    updated_at = excluded.updated_at
+                """,
+                (candidate_id, started_at, now_str, now_str),
+            )
+            conn.commit()
+
+    def get_evidence_session(self, candidate_id: str) -> Optional[Dict[str, str]]:
+        with self._get_connection() as conn:
+            row = conn.execute(
+                "SELECT candidate_id, started_at, created_at, updated_at FROM shadow_evidence_session WHERE candidate_id = ?",
                 (candidate_id,),
             ).fetchone()
             if row is None:
@@ -1289,19 +1332,7 @@ class ShadowStoreRepository:
                     variant_stage, candidate_created, armed, activated,
                     event_id, reason_codes_json, source, is_test, detected_at, created_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(symbol, timeframe, pivot_2_time, direction) DO UPDATE SET
-                    relative_volume = excluded.relative_volume,
-                    volume_pass = excluded.volume_pass,
-                    pattern_type = excluded.pattern_type,
-                    pattern_pass = excluded.pattern_pass,
-                    variant_stage = excluded.variant_stage,
-                    candidate_created = excluded.candidate_created,
-                    armed = excluded.armed,
-                    activated = excluded.activated,
-                    event_id = excluded.event_id,
-                    reason_codes_json = excluded.reason_codes_json,
-                    source = excluded.source,
-                    is_test = excluded.is_test
+                ON CONFLICT(symbol, timeframe, pivot_2_time, direction) DO NOTHING
                 """,
                 (
                     ev.evidence_id, ev.symbol, ev.timeframe, ev.asset_class, ev.direction,
@@ -1460,13 +1491,15 @@ class ShadowStoreRepository:
 
     def upsert_fibonacci_telemetry(self, record: Dict[str, Any]) -> bool:
         """Insert immutable decision snapshot; update only post-decision observation fields."""
+        record = dict(record)
+        record.setdefault("evidence_snapshot_json", "{}")
         columns = [
             "telemetry_id", "research_scope", "candidate_id", "occurrence_id",
             "symbol", "timeframe", "direction", "mode", "role", "policy_id",
             "decision_time", "decision_status", "decision_reason",
             "anchor_a_time", "anchor_a_price", "anchor_a_confirmed_at",
             "anchor_b_time", "anchor_b_price", "anchor_b_confirmed_at",
-            "levels_json", "matched_levels_json", "activated", "activation_level",
+            "levels_json", "matched_levels_json", "evidence_snapshot_json", "activated", "activation_level",
             "entry_time", "entry_price", "stop_price", "target_outcomes_json",
             "last_observed_candle", "source", "is_test", "created_at", "updated_at",
         ]
