@@ -33,11 +33,11 @@ O registro `ev_bull_EURUSD_M15_20260904_0945000000` foi preservado e reclassific
 Após a migração: HDF live = 0; Fibonacci live = 0.
 ## Validação
 
-Suíte direcionada recovery/HDF/Fibonacci: 24 PASS.
+Suíte direcionada recovery/HDF/Fibonacci: 25 PASS.
 
-Suíte ampla de serviços Shadow/Event/Fibonacci: 155 PASS.
+Suíte ampla de serviços Shadow/Event/Fibonacci: 156 PASS.
 
-Regressão completa do repositório: 504 PASS, 1 skip esperado.
+Regressão completa do repositório: 505 PASS, 1 skip esperado.
 
 O fingerprint operacional do SQLite permaneceu idêntico antes/depois da regressão completa, provando que pytest não voltou a tocar no banco real.
 
@@ -46,3 +46,17 @@ O fingerprint operacional do SQLite permaneceu idêntico antes/depois da regress
 `RECOVERY_CUTOFF_V1 = ACCEPTED`.
 
 Este gate é de integridade metodológica e não altera candidato, versão, parâmetros ou hash. A estratégia permanece em Shadow e continua sem autorização para operação real.
+
+## Deploy final e corte de telemetria
+
+Código versionado/push: commit `2f8b964` (`fix shadow recovery cutoff`).
+
+O primeiro restart comprovou o cutoff: Radar live = 0 e Fibonacci live = 0; o EURUSD recovery não reapareceu.
+
+A cobertura inicial ficou em 80% porque a sessão operacional anterior incluía um slot M15 perdido em cada um dos 13 ativos durante a manutenção programada. Não havia `failed_checks` novos.
+
+Como `2f8b964` é um novo deploy, as 39 linhas dessa sessão foram preservadas em `legacy_pre_recovery_deploy_20260904_115621` e a telemetria ativa recebeu T0 próprio `2026-09-04T11:56:21Z`.
+
+Backup pré-corte: `shadow_engine_pre_recovery_deploy_20260904_115621.db`; SHA-256 `ca2201b27a448ad7121f70cf0655e6184751e13802b001a70faca5d9b2729f41`.
+
+Após o corte: HDF live = 0, Fibonacci live = 0, Radar live = 0, 39 scanners ativos, 0 erros, 0 unsupported. Até o primeiro fechamento de candle pós-deploy, coverage permanece `UNKNOWN`, o que é o estado correto para uma sessão sem amostra observada.
