@@ -260,3 +260,26 @@ def test_breakdowns(mock_store):
     b_tf = {item["key"]: item for item in snap.breakdowns["timeframe"]}
     assert b_tf["H1"]["terminal_trades"] == 1
     assert b_tf["M15"]["terminal_trades"] == 1
+
+
+def test_eligibility_filter_rejects_test_event_id_even_after_shadow_t0():
+    evt = make_event(
+        "test_future_fixture",
+        ShadowState.TARGET_2R.value,
+        "2026-08-10 14:00:00",
+    )
+    assert ProspectiveEligibilityFilter.is_eligible(
+        evt, "2026-08-10 12:00:00"
+    ) is False
+
+
+def test_eligibility_filter_rejects_is_test_metadata():
+    evt = make_event(
+        "fixture_without_test_prefix",
+        ShadowState.TARGET_2R.value,
+        "2026-08-10 14:00:00",
+        metadata={"is_test": True, "bootstrap_detected": False},
+    )
+    assert ProspectiveEligibilityFilter.is_eligible(
+        evt, "2026-08-10 12:00:00"
+    ) is False

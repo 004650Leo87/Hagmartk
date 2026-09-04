@@ -7,8 +7,21 @@ from backend.api.app import app
 
 
 def test_system_health_autostart(monkeypatch):
-    # Ensure autostart for the test so kernel and market engine are started
+    # Explicit autostart is tested with mock market data and a no-op scanner.
     monkeypatch.setenv("HAGMARTK_AUTOSTART", "1")
+    monkeypatch.setenv("HAGMARTK_MARKET_ADAPTER", "mock")
+
+    class FakeScanner:
+        def start_auto_scheduler(self, adapter, interval_seconds=3.0):
+            self.started = True
+
+        def stop_auto_scheduler(self):
+            self.started = False
+
+    monkeypatch.setattr(
+        "backend.services.shadow_scanner.ShadowScannerManager",
+        lambda: FakeScanner(),
+    )
 
     with TestClient(app) as client:
         resp = client.get("/system/health")
@@ -32,3 +45,11 @@ def test_system_health_no_system(monkeypatch):
     # Expect 503 when system not initialized
     assert resp.status_code == 503
         # End of test_system_health_no_system
+
+def test_system_default_does_not_autostart(monkeypatch):
+    """Imports/TestClient must not start the real kernel unless explicitly requested."""
+    monkeypatch.delenv("HAGMARTK_AUTOSTART", raising=False)
+
+    with TestClient(app):
+        assert app.state.system is not None
+        assert app.state.started_at is None

@@ -136,6 +136,11 @@ class ProspectiveEligibilityFilter:
         if evt.metadata and evt.metadata.get("bootstrap_detected"):
             return False
 
+        if str(getattr(evt, "event_id", "")).lower().startswith("test_"):
+            return False
+        if evt.metadata and bool(evt.metadata.get("is_test")):
+            return False
+
         shadow_dt = parse_utc_timestamp(shadow_started_at)
         if shadow_dt is None:
             return True

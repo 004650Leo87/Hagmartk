@@ -15,6 +15,14 @@ def test_mock_bootstrap_startup_and_shutdown(monkeypatch):
     system = create_system()
     assert system["adapter_mode"] == "mock"
 
+    class FakeScanner:
+        def start_auto_scheduler(self, adapter, interval_seconds=3.0):
+            self.started = True
+
+        def stop_auto_scheduler(self):
+            self.started = False
+
+    system["shadow_scanner"] = FakeScanner()
     start_system(system)
 
     application = system["application"]
