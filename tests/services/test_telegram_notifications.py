@@ -42,13 +42,14 @@ def test_message_model_armed_and_target():
     armed = notifier._format_event_message(ShadowEventType.SETUP_ARMED, _event(), {})
     assert "CONFIGURAÇÃO ARMADA" in armed
     assert "EURUSD" in armed and "M15" in armed and "COMPRA" in armed
-    assert "ordem real: NÃO" in armed
+    assert "HAGMARTK SHADOW • DVP" in armed
+    assert "Ordem real: <b>NÃO</b>" in armed
 
     evt = _event(ShadowState.TARGET_2R.value)
     evt.entry_price = 1.101
     target = notifier._format_event_message(ShadowEventType.TARGET_REACHED, evt, {})
     assert "ALVO 2R ATINGIDO" in target
-    assert "Resultado: +2.00R" in target
+    assert "Resultado bruto: <b>+2.00R</b>" in target
 
 def test_internal_publisher_forwards_allowed_event_to_notifier(tmp_path):
     store = ShadowStoreRepository(str(tmp_path / "telegram.db"))

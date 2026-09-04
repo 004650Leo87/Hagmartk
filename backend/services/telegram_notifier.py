@@ -1,3 +1,4 @@
+import html
 import json
 import logging
 import os
@@ -98,9 +99,39 @@ class TelegramNotifier:
 
     def _safe_send_test(self) -> None:
         try:
-            self._send_payload("✅ HAGMARTK SHADOW — Telegram conectado\nModo: PAPER / sem ordem real", None, "telegram_test")
+            self._send_payload(self._format_test_message(), None, "telegram_test")
         except Exception as exc:
             _logger.warning("[TELEGRAM] test delivery failed error=%s", type(exc).__name__)
+
+    @staticmethod
+    def _format_test_message() -> str:
+        return (
+            "🧪 <b>PRÉVIA DE TEMPLATE — NÃO É EVENTO DE MERCADO</b>\n\n"
+            "📡 <b>HAGMARTK SHADOW • DVP</b>\n"
+            "━━━━━━━━━━━━━━━━━━\n\n"
+            "🟡 <b>CONFIGURAÇÃO ARMADA</b>\n"
+            "Possível oportunidade de compra detectada pelo motor.\n\n"
+            "📈 <b>MERCADO</b>\n"
+            "Ativo: <b>EURUSD</b>\n"
+            "Tempo gráfico: <b>M15</b>\n"
+            "Direção: <b>▲ COMPRA</b>\n\n"
+            "🎯 <b>NÍVEIS OPERACIONAIS</b>\n"
+            "Ativação: <code>1.10100</code>\n"
+            "Stop estrutural: <code>1.09500</code>\n"
+            "Alvo 2R: <code>1.11300</code>\n\n"
+            "🧠 <b>CONFLUÊNCIAS DVP</b>\n"
+            "✓ Divergência RSI confirmada\n"
+            "✓ Volume relativo: <b>1.42x</b>\n"
+            "✓ Padrão: <b>Engolfo altista</b>\n\n"
+            "🕯 <b>GATILHO VISUAL</b>\n"
+            "Candle de compra: <b>BRANCO</b>\n"
+            "A imagem técnica será anexada aos eventos quando o renderer estiver ativo.\n\n"
+            "🛡 <b>CONTROLE OPERACIONAL</b>\n"
+            "Modo: <b>SHADOW / PAPER</b>\n"
+            "Ordem real: <b>NÃO</b>\n\n"
+            "🕒 <b>REGISTRO</b>\n"
+            "Evento demonstrativo para validação visual do Telegram."
+        )
 
     @staticmethod
     def _fmt_price(value: Any) -> str:
@@ -110,49 +141,102 @@ class TelegramNotifier:
             number = 0.0
         return "—" if number <= 0 else f"{number:.5f}".rstrip("0").rstrip(".")
 
+    @staticmethod
+    def _esc(value: Any) -> str:
+        return html.escape(str(value or ""), quote=False)
+
+    @staticmethod
+    def _human_pattern(value: Any) -> str:
+        raw = str(value or "NONE").replace("_", " ").strip()
+        if not raw or raw.upper() == "NONE":
+            return "Não informado"
+        return raw.title()
+
     @classmethod
     def _format_event_message(cls, event_type: ShadowEventType, event: ShadowEvent, details: Dict[str, Any]) -> str:
         labels = {
-            ShadowEventType.SETUP_ARMED: "🟡 CONFIGURAÇÃO ARMADA",
-            ShadowEventType.ENTRY_ACTIVATED: "🚀 ENTRADA VIRTUAL ATIVADA",
-            ShadowEventType.MILESTONE_1R: "✅ +1R ALCANÇADO",
-            ShadowEventType.TARGET_REACHED: "🎯 ALVO 2R ATINGIDO",
-            ShadowEventType.STOP_REACHED: "🛑 STOP ESTRUTURAL ATINGIDO",
-            ShadowEventType.SETUP_EXPIRED: "⌛ SETUP EXPIRADO",
-            ShadowEventType.SETUP_INVALIDATED: "⚪ SETUP INVALIDADO",
+            ShadowEventType.SETUP_ARMED: ("🟡", "CONFIGURAÇÃO ARMADA"),
+            ShadowEventType.ENTRY_ACTIVATED: ("⚡", "ENTRADA VIRTUAL ATIVADA"),
+            ShadowEventType.MILESTONE_1R: ("✅", "+1R ALCANÇADO"),
+            ShadowEventType.TARGET_REACHED: ("🎯", "ALVO 2R ATINGIDO"),
+            ShadowEventType.STOP_REACHED: ("🛑", "STOP ESTRUTURAL ATINGIDO"),
+            ShadowEventType.SETUP_EXPIRED: ("⌛", "SETUP EXPIRADO"),
+            ShadowEventType.SETUP_INVALIDATED: ("⚪", "SETUP INVALIDADO"),
         }
+        icon, label = labels[event_type]
         direction = "COMPRA" if str(event.direction).upper() == "BULLISH" else "VENDA"
+        direction_icon = "▲" if direction == "COMPRA" else "▼"
+        trigger_color = "BRANCO" if direction == "COMPRA" else "AMARELO"
+        candle_time = details.get("candle_timestamp") or event.market_candle_time or event.confluence_time or "—"
+        pattern = cls._human_pattern(event.pattern_type)
+
         lines = [
-            f"{labels[event_type]}",
-            f"HAGMARTK SHADOW • {event.symbol} • {event.timeframe} • {direction}",
+            "📡 <b>HAGMARTK SHADOW • DVP</b>",
+            "━━━━━━━━━━━━━━━━━━",
+            "",
+            f"{icon} <b>{label}</b>",
+            "",
+            "📈 <b>MERCADO</b>",
+            f"Ativo: <b>{cls._esc(event.symbol)}</b>",
+            f"Tempo gráfico: <b>{cls._esc(event.timeframe)}</b>",
+            f"Direção: <b>{direction_icon} {direction}</b>",
+            "",
         ]
 
-        if event_type == ShadowEventType.SETUP_ARMED:
+        if event_type in {ShadowEventType.SETUP_ARMED, ShadowEventType.ENTRY_ACTIVATED}:
             lines.extend([
-                f"Ativação: {cls._fmt_price(event.activation_level)}",
-                f"Stop: {cls._fmt_price(event.initial_stop)}",
-                f"Alvo 2R estimado: {cls._fmt_price(event.target_2R)}",
-            ])
-        elif event_type == ShadowEventType.ENTRY_ACTIVATED:
-            lines.extend([
-                f"Entrada: {cls._fmt_price(event.entry_price)}",
-                f"Stop: {cls._fmt_price(event.initial_stop)}",
-                f"Alvo 2R: {cls._fmt_price(event.target_2R)}",
+                "🎯 <b>NÍVEIS OPERACIONAIS</b>",
+                f"Ativação: <code>{cls._fmt_price(event.activation_level)}</code>",
+                f"Entrada virtual: <code>{cls._fmt_price(event.entry_price)}</code>",
+                f"Stop estrutural: <code>{cls._fmt_price(event.initial_stop)}</code>",
+                f"Alvo 2R: <code>{cls._fmt_price(event.target_2R)}</code>",
+                "",
+                "🧠 <b>CONFLUÊNCIAS DVP</b>",
+                "✓ Divergência RSI confirmada",
+                f"✓ Volume relativo: <b>{float(event.relative_volume or 0):.2f}x</b>",
+                f"✓ Padrão de candle: <b>{cls._esc(pattern)}</b>",
+                "",
+                "🕯 <b>GATILHO VISUAL</b>",
+                f"Candle de {direction.lower()}: <b>{trigger_color}</b>",
+                "",
             ])
         elif event_type == ShadowEventType.MILESTONE_1R:
-            lines.append(f"Entrada: {cls._fmt_price(event.entry_price)} • MFE: {float(event.mfe_r_live or 0):.2f}R")
-        elif event_type == ShadowEventType.TARGET_REACHED:
-            lines.append(f"Resultado: +2.00R • Alvo: {cls._fmt_price(event.target_2R)}")
-        elif event_type == ShadowEventType.STOP_REACHED:
-            lines.append(f"Resultado: -1.00R • Stop: {cls._fmt_price(event.initial_stop)}")
+            lines.extend([
+                "📊 <b>EVOLUÇÃO</b>",
+                f"Entrada virtual: <code>{cls._fmt_price(event.entry_price)}</code>",
+                f"MFE atual: <b>+{float(event.mfe_r_live or 0):.2f}R</b>",
+                f"MAE atual: <b>{float(event.mae_r_live or 0):.2f}R</b>",
+                f"Candles desde ativação: <b>{int(event.bars_since_activation or 0)}</b>",
+                "",
+            ])
+        elif event_type in {ShadowEventType.TARGET_REACHED, ShadowEventType.STOP_REACHED}:
+            result = "+2.00R" if event_type == ShadowEventType.TARGET_REACHED else "-1.00R"
+            exit_label = "Alvo 2R" if event_type == ShadowEventType.TARGET_REACHED else "Stop"
+            exit_value = event.target_2R if event_type == ShadowEventType.TARGET_REACHED else event.initial_stop
+            lines.extend([
+                "💰 <b>FECHAMENTO TÉCNICO</b>",
+                f"Entrada virtual: <code>{cls._fmt_price(event.entry_price)}</code>",
+                f"{exit_label}: <code>{cls._fmt_price(exit_value)}</code>",
+                f"Resultado bruto: <b>{result}</b>",
+                f"Candles desde ativação: <b>{int(event.bars_since_activation or 0)}</b>",
+                "",
+            ])
         else:
-            lines.append(f"Motivo: {details.get('reason') or event_type.value}")
+            reason = cls._esc(details.get("reason") or event_type.value)
+            lines.extend([
+                "📋 <b>ENCERRAMENTO</b>",
+                f"Motivo: {reason}",
+                "",
+            ])
 
-        pattern = str(event.pattern_type or "NONE").replace("_", " ")
-        if pattern != "NONE":
-            lines.append(f"Padrão: {pattern} • Volume: {float(event.relative_volume or 0):.2f}x")
-        lines.append(f"Estado: PAPER • ordem real: NÃO")
-        lines.append(f"Candle: {details.get('candle_timestamp') or event.market_candle_time or event.confluence_time}")
+        lines.extend([
+            "🛡 <b>CONTROLE OPERACIONAL</b>",
+            "Modo: <b>SHADOW / PAPER</b>",
+            "Ordem real: <b>NÃO</b>",
+            "",
+            "🕒 <b>REGISTRO</b>",
+            f"Candle/evento: <code>{cls._esc(candle_time)}</code>",
+        ])
         return "\n".join(lines)
 
     def _send_payload(self, text: str, event_type: ShadowEventType | None, event_id: str) -> None:
@@ -170,6 +254,7 @@ class TelegramNotifier:
                 "chat_id": self.config.chat_id,
                 "text": text,
                 "disable_web_page_preview": True,
+                "parse_mode": "HTML",
             }
         else:
             raise RuntimeError("Telegram configuration is incomplete")
