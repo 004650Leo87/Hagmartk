@@ -670,7 +670,7 @@ class ShadowStoreRepository:
             "SELECT evidence_id, symbol, timeframe, direction, variant_stage, "
             "volume_pass, pattern_pass, pattern_type, relative_volume, detected_at, created_at, pivot_2_time "
             "FROM shadow_hdf_evidence "
-            "WHERE candidate_created = 1 AND is_test = 0"
+            "WHERE candidate_created = 1 AND is_test = 0 AND source = 'LIVE_PROSPECTIVE'"
         )
         params: List[Any] = []
         if symbol:
@@ -1499,7 +1499,7 @@ class ShadowStoreRepository:
         with self._get_connection() as conn:
             cursor = conn.cursor()
             
-            ev_where = "WHERE is_test = 0"
+            ev_where = "WHERE is_test = 0 AND source = 'LIVE_PROSPECTIVE'"
             ev_params: List[Any] = []
             evt_where = "WHERE 1=1"
             evt_params: List[Any] = []
@@ -1548,7 +1548,7 @@ class ShadowStoreRepository:
                 "armed": state_counts.get("ARMED", 0),
                 "activated": state_counts.get("ACTIVATED", 0),
                 "expired": state_counts.get("EXPIRED", 0),
-                "invalidated": state_counts.get("INVALIDATED_BEFORE_ACTIVATION", 0),
+                "invalidated": state_counts.get("INVALIDATED", 0) + state_counts.get("INVALIDATED_BEFORE_ACTIVATION", 0),
                 "target_2r": state_counts.get("TARGET_2R", 0),
                 "stopped": state_counts.get("STOPPED", 0),
                 "total_real_events": real_events_count,

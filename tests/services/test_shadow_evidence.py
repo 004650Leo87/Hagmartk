@@ -230,8 +230,16 @@ def test_funnel_telemetry(temp_store):
         pivot_2_time="t4", pivot_2_price=1.10, pivot_2_rsi=65.0,
         volume_pass=True, pattern_pass=True, candidate_created=True, is_test=False,
     )
+    ev_legacy = HDFEvidence(
+        evidence_id="e_legacy", symbol="EURUSD", timeframe="H1", asset_class="FOREX", direction="BULLISH",
+        pivot_1_time="t5", pivot_1_price=1.08, pivot_1_rsi=30.0,
+        pivot_2_time="t6", pivot_2_price=1.07, pivot_2_rsi=35.0,
+        volume_pass=True, pattern_pass=True, candidate_created=True, is_test=False,
+        source="LEGACY_PRE_PAPER_EXECUTION",
+    )
     temp_store.save_hdf_evidence(ev1)
     temp_store.save_hdf_evidence(ev2)
+    temp_store.save_hdf_evidence(ev_legacy)
 
     funnel = temp_store.get_funnel_telemetry(symbol="EURUSD", timeframe="H1")
     assert funnel["hdf_d"] == 2
