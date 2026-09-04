@@ -134,3 +134,20 @@ Deletion or selective exclusion for marketing presentation is forbidden except d
 7. Add publication adapters only after security, regulatory and data-quality gates.
 
 No Telegram/Instagram/YouTube adapter may become a second source of truth.
+## 13. Implementation checkpoint — 2026-09-03
+
+Implementation order step 1 is now complete.
+
+Implemented in `backend/domain/market_events.py`:
+- canonical `MarketEventClass` enum for all seven protocol classes;
+- canonical lifecycle `DETECTED -> FORMING -> CONFIRMED -> ACTIVE -> RESOLVED`;
+- immutable `MarketEvent`, `EventFact`, `EventStatistic` and `EventTransition` objects;
+- terminal-reason enforcement for resolved events;
+- Quant Event mandatory-field validation;
+- protection against non-Quant events impersonating a complete reference/invalidation/objective structure;
+- denominator/window/provenance contract for displayed statistics;
+- JSON-safe canonical serialization helpers.
+
+Validation: `tests/test_market_event_protocol.py` passes 11/11. Full project regression at this checkpoint: 450 passed, 1 skipped.
+
+No Event Engine, publication adapter, dashboard surface or strategy promotion was added in this step.
