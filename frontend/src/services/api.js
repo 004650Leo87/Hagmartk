@@ -223,6 +223,14 @@ export async function getShadowScanners() {
   return apiRequest('/api/shadow/scanners');
 }
 
+export async function getShadowCoverage() {
+  return apiRequest('/api/shadow/coverage');
+}
+
+export async function getTelegramNotificationStatus() {
+  return apiRequest('/api/shadow/notifications/telegram/status');
+}
+
 /* =====================================================
    WATCHLIST
 ===================================================== */

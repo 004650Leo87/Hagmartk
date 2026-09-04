@@ -168,7 +168,7 @@ def get_hdf_funnel_telemetry(
 
 @router.get("/coverage")
 def get_hdf_scanner_coverage() -> Dict[str, Any]:
-    """Retorna a cobertura operacional de escaneamento do universo 39/39 com auditoria de XAUUSD."""
+    """Retorna a cobertura operacional de escaneamento do universo Shadow configurado com auditoria de XAUUSD."""
     from backend.services.shadow_scanner import SHADOW_ASSETS, SHADOW_TIMEFRAMES
     from backend.core.time_utils import now_utc_str, parse_utc_timestamp
     

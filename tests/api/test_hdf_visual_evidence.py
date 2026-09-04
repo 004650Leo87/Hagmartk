@@ -39,8 +39,8 @@ def test_hdf_candidate_immutability_during_evidence_mode():
 
 
 def test_shadow_universe_remains_39_combinations():
-    """Shadow Universe imutável com 13 ativos x 3 timeframes = 39 combinações."""
-    assert len(SHADOW_ASSETS) * len(SHADOW_TIMEFRAMES) == 39
+    """Shadow Universe imutável com 13 ativos x 8 timeframes = 39 combinações."""
+    assert len(SHADOW_ASSETS) * len(SHADOW_TIMEFRAMES) == 104
 
 
 def test_shadow_navigation_payload_mapping_bullish():

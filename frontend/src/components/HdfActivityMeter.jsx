@@ -266,7 +266,7 @@ export default function HdfActivityMeter() {
                 style={{ fontSize: '9px', padding: '2px 6px' }}
                 onClick={() => setActiveTab('SCANNERS')}
               >
-                SCANNERS ({telemetry?.registered || 39})
+                SCANNERS ({telemetry?.registered || 104})
               </button>
               <button
                 type="button"
@@ -282,7 +282,7 @@ export default function HdfActivityMeter() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
               <div style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '6px', borderRadius: '4px' }}>
                 <span style={{ color: 'var(--hk-text-muted)', display: 'block', fontSize: '9px' }}>SCANNERS REGISTRADOS</span>
-                <span style={{ fontWeight: 700, fontSize: '12px', color: '#21d68d' }}>{telemetry?.registered || 39} / 39</span>
+                <span style={{ fontWeight: 700, fontSize: '12px', color: '#21d68d' }}>{telemetry?.registered || 104} / 104</span>
               </div>
 
               <div style={{ background: 'rgba(255, 255, 255, 0.02)', padding: '6px', borderRadius: '4px' }}>

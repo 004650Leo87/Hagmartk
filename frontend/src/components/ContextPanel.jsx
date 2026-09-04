@@ -15,8 +15,8 @@ export default function ContextPanel({
   onToggleIndicator,
   systemStatus = 'UNKNOWN',
   systemHealth = null,
-  operationalCount = 33,
-  totalCount = 39,
+  operationalCount = 0,
+  totalCount = 104,
 }) {
   const [watchlistFilter, setWatchlistFilter] = useState('');
 

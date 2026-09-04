@@ -82,7 +82,7 @@ export default function StrategyCenterView() {
             </div>
             <div className="hk-param-row">
               <span>Parameter Hash:</span>
-              <code>3bf74a... (Congelado)</code>
+              <code>d192dd... (Congelado)</code>
             </div>
           </div>
         </div>
@@ -92,16 +92,16 @@ export default function StrategyCenterView() {
       <div className="hk-card full-width">
         <div className="hk-card-header">
           <span className="hk-card-icon">🛡️</span>
-          <h3>Shadow Universe (39 Combinações)</h3>
+          <h3>Shadow Universe (104 Combina&ccedil;&otilde;es)</h3>
         </div>
         <div className="hk-card-body">
           <p className="hk-text-secondary">
-            O Shadow Universe é imutável e composto por 13 ativos e 3 timeframes (M15, H1, H4). As 39 combinações são observadas prospectivamente sem qualquer execução de ordens reais.
+            O universo operacional monitora 13 ativos em 8 timeframes (M5, M15, M30, H1, H2, H4, D1, W1): 104 combina&ccedil;&otilde;es prospectivas, sem execu&ccedil;&atilde;o de ordens reais. O candidato matem&aacute;tico v1.0.0 permanece congelado.
           </p>
           <div className="hk-tags-cloud">
             {['EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCHF', 'USDCAD', 'NZDUSD', 'EURJPY', 'GBPJPY', 'XAUUSD', 'XAGUSD', 'BTCUSD', 'ETHUSD'].map((asset) => (
               <span key={asset} className="hk-tag-chip">
-                {asset} (M15/H1/H4)
+                {asset} (8 TFs)
               </span>
             ))}
           </div>

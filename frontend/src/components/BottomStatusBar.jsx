@@ -4,7 +4,7 @@ import HdfActivityMeter from './HdfActivityMeter';
 export default function BottomStatusBar({
   mt5Connected,
   operationalCount = 0,
-  totalCount = 39,
+  totalCount = 104,
   lastActivity,
 }) {
   const [utcTime, setUtcTime] = useState('');

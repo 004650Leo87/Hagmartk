@@ -1,10 +1,10 @@
 """Testes da Fase 5C.27 — Proof Determinístico da Telemetria e Activity Meter do HDF Engine.
 
 Testa:
-1. GET /api/shadow/heartbeat retorna telemetria real dos 39 scanners.
+1. GET /api/shadow/heartbeat retorna telemetria real dos 104 scanners.
 2. scan_cycle_count_total incrementa a cada ciclo de polling do scanner.
 3. evaluation_count_total incrementa APENAS quando uma nova vela fechada é entregue ao motor HDF.
-4. XAUUSD M15, H1 e H4 estão registrados e incluídos na varredura.
+4. XAUUSD nos 8 timeframes configurados estão registrados e incluídos na varredura.
 5. Detecção estrita de stale/erro (sem animação falsa ou pulso estático).
 """
 from __future__ import annotations
@@ -19,7 +19,7 @@ def test_shadow_heartbeat_returns_live_telemetry():
     hb = store.get_shadow_heartbeat()
 
     assert hb is not None
-    assert hb["registered"] == 39
+    assert hb["registered"] == 104
     assert "totals" in hb
     totals = hb["totals"]
     assert "scan_cycles" in totals
@@ -36,12 +36,10 @@ def test_xauusd_scanners_included_in_heartbeat():
     scanners = hb.get("scanners", [])
 
     xauusd_scanners = [s for s in scanners if s["symbol"] == "XAUUSD"]
-    assert len(xauusd_scanners) == 3, f"Esperado 3 scanners XAUUSD (M15, H1, H4), encontrado {len(xauusd_scanners)}"
+    assert len(xauusd_scanners) == 8, f"Esperado 8 scanners XAUUSD, encontrado {len(xauusd_scanners)}"
 
     tfs = [s["timeframe"] for s in xauusd_scanners]
-    assert "M15" in tfs
-    assert "H1" in tfs
-    assert "H4" in tfs
+    assert tfs == ["M5", "M15", "M30", "H1", "H2", "H4", "D1", "W1"]
 
 
 def test_activity_meter_delta_governance_mock():

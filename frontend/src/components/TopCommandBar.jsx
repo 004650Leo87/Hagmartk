@@ -17,8 +17,8 @@ export default function TopCommandBar({
   onToggleTheme,
   isZenMode,
   onToggleZen,
-  operationalCount = 39,
-  totalCount = 39,
+  operationalCount = 0,
+  totalCount = 104,
 }) {
   const FAVORITES = ['M5', 'M15', 'H1', 'H4'];
   const ALL_TIMEFRAMES = [

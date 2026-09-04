@@ -55,10 +55,10 @@ def _generate_test_candles(count: int = 50, timeframe: str = "H1", start_time: s
 
 
 def test_heartbeat_has_39_registered_combinations(temp_store):
-    """Verifica se o heartbeat mapeia exatamente 39 combinações (13 ativos x 3 timeframes)."""
+    """Verifica se o heartbeat mapeia exatamente 39 combinações (13 ativos x 8 timeframes)."""
     hb = temp_store.get_shadow_heartbeat(candidate_id=HDF_ROBUST_CANDIDATE_V1.candidate_id)
-    assert hb["registered"] == 39
-    assert len(hb["scanners"]) == 39
+    assert hb["registered"] == 104
+    assert len(hb["scanners"]) == 104
 
 
 def test_evaluation_count_increments_only_on_new_closed_candle(scanner_manager, temp_store):

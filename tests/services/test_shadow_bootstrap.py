@@ -49,12 +49,12 @@ def test_shadow_universe_has_13_assets():
 
 
 def test_shadow_universe_has_3_timeframes():
-    assert len(SHADOW_TIMEFRAMES) == 3, f"Esperado 3 timeframes, encontrado {len(SHADOW_TIMEFRAMES)}"
+    assert SHADOW_TIMEFRAMES == ["M5", "M15", "M30", "H1", "H2", "H4", "D1", "W1"]
 
 
 def test_39_combinations_intact():
     total = len(SHADOW_ASSETS) * len(SHADOW_TIMEFRAMES)
-    assert total == 39, f"Esperado 39 combinações, encontrado {total}"
+    assert total == 104, f"Esperado 39 combinações, encontrado {total}"
 
 
 def test_candidate_id_intact():

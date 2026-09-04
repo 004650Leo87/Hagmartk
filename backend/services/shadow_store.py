@@ -739,11 +739,8 @@ class ShadowStoreRepository:
         now_dt = now_utc_datetime()
         now_str = now_utc_str()
 
-        STALE_THRESHOLD_SECONDS = {
-            "M15": 2700,    # 45 minutos
-            "H1": 10800,    # 3 horas
-            "H4": 43200,    # 12 horas
-        }
+        from backend.core.constants import TIMEFRAME_MINUTES
+
 
         funnel = self.get_funnel_telemetry()
 
@@ -772,7 +769,7 @@ class ShadowStoreRepository:
 
                 last_dt = parse_utc_timestamp(last_eval_at)
                 age_seconds = int((now_dt - last_dt).total_seconds()) if last_dt is not None else 999999
-                max_stale_sec = STALE_THRESHOLD_SECONDS.get(tf.upper(), 2700)
+                max_stale_sec = 3 * TIMEFRAME_MINUTES.get(tf.upper(), 15) * 60
 
                 is_stale = age_seconds > max_stale_sec if last_dt is not None else False
 
@@ -939,7 +936,8 @@ class ShadowStoreRepository:
     def _scanner_close_anchor(candidate_id: str, symbol: str, timeframe: str, cursor):
         from datetime import timedelta
         from backend.core.time_utils import parse_utc_timestamp
-        tf_minutes = {"M15": 15, "H1": 60, "H4": 240}.get(timeframe.upper())
+        from backend.core.constants import TIMEFRAME_MINUTES
+        tf_minutes = TIMEFRAME_MINUTES.get(timeframe.upper())
         if tf_minutes is None:
             return None
         row = cursor.execute(
@@ -967,7 +965,8 @@ class ShadowStoreRepository:
     @classmethod
     def _expected_checks_for_window(cls, candidate_id: str, symbol: str, timeframe: str, now_dt, cursor) -> int:
         """Expected slots in the current UTC hour, aligned to the observed broker candle phase."""
-        tf_minutes = {"M15": 15, "H1": 60, "H4": 240}.get(timeframe.upper())
+        from backend.core.constants import TIMEFRAME_MINUTES
+        tf_minutes = TIMEFRAME_MINUTES.get(timeframe.upper())
         if tf_minutes is None:
             return 0
         hour_start = now_dt.replace(minute=0, second=0, microsecond=0)
@@ -981,7 +980,8 @@ class ShadowStoreRepository:
     @classmethod
     def _expected_checks_since_telemetry_t0(cls, candidate_id: str, symbol: str, timeframe: str, now_dt, cursor) -> int:
         """Independent denominator: expected close slots even when no telemetry row was written."""
-        tf_minutes = {"M15": 15, "H1": 60, "H4": 240}.get(timeframe.upper())
+        from backend.core.constants import TIMEFRAME_MINUTES
+        tf_minutes = TIMEFRAME_MINUTES.get(timeframe.upper())
         if tf_minutes is None:
             return 0
         telemetry_row = cursor.execute(

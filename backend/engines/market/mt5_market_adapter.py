@@ -273,6 +273,7 @@ class MT5MarketAdapter(MarketAdapter):
                 "M15": getattr(mt5, "TIMEFRAME_M15", 15),
                 "M30": getattr(mt5, "TIMEFRAME_M30", 30),
                 "H1": getattr(mt5, "TIMEFRAME_H1", 16385),
+                "H2": getattr(mt5, "TIMEFRAME_H2", 16386),
                 "H4": getattr(mt5, "TIMEFRAME_H4", 16388),
                 "D1": getattr(mt5, "TIMEFRAME_D1", 16408),
                 "W1": getattr(mt5, "TIMEFRAME_W1", 32769),

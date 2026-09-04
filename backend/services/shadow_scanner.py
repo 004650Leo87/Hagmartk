@@ -7,6 +7,7 @@ import pandas as pd
 
 from backend.backtest.data_cache import OHLCDataCache
 from backend.core.time_utils import format_utc_str, now_utc_datetime, now_utc_str, parse_utc_timestamp
+from backend.core.constants import SUPPORTED_TIMEFRAMES, TIMEFRAME_MINUTES
 from backend.domain.candidate import HDF_CANDIDATE_V1_PARAMETER_HASH, HDF_ROBUST_CANDIDATE_V1
 from backend.domain.shadow_models import (
     EvidencePayload,
@@ -30,7 +31,8 @@ METALS_ASSETS = ["XAUUSD", "XAGUSD"]
 CRYPTO_ASSETS = ["BTCUSD", "ETHUSD"]
 
 SHADOW_ASSETS = FOREX_ASSETS + METALS_ASSETS + CRYPTO_ASSETS
-SHADOW_TIMEFRAMES = ["M15", "H1", "H4"]
+SHADOW_TIMEFRAMES = ["M5", "M15", "M30", "H1", "H2", "H4", "D1", "W1"]
+SHADOW_TIMEFRAME_MINUTES = {tf: TIMEFRAME_MINUTES[tf] for tf in SHADOW_TIMEFRAMES}
 
 
 def get_asset_class(symbol: str) -> str:
@@ -75,7 +77,9 @@ def get_only_closed_candles(
     else:
         now_dt = now_dt.astimezone(timezone.utc)
 
-    tf_minutes = {"M15": 15, "H1": 60, "H4": 240}.get(timeframe.upper(), 15)
+    tf_minutes = SHADOW_TIMEFRAME_MINUTES.get(timeframe.upper())
+    if tf_minutes is None:
+        raise ValueError(f"Unsupported Shadow timeframe: {timeframe!r}")
     parsed = pd.to_datetime(df["time"], utc=True, errors="coerce")
     close_times = parsed + pd.to_timedelta(tf_minutes, unit="m")
     mask = parsed.notna() & (close_times <= pd.Timestamp(now_dt))
@@ -287,7 +291,9 @@ class ShadowScannerManager:
         if not is_synthetic:
             opened_dt = self._parse_event_time(last_closed_time)
             runtime_dt = self._parse_event_time(self.runtime_started_at)
-            tf_minutes = {"M15": 15, "H1": 60, "H4": 240}.get(timeframe.upper(), 15)
+            tf_minutes = SHADOW_TIMEFRAME_MINUTES.get(timeframe.upper())
+            if tf_minutes is None:
+                raise ValueError(f"Unsupported Shadow timeframe: {timeframe!r}")
             closed_at = opened_dt + timedelta(minutes=tf_minutes) if opened_dt is not None else None
             if runtime_dt is None or closed_at is None or closed_at <= runtime_dt:
                 # Existing paper events may legitimately advance through downtime candles.
@@ -707,18 +713,13 @@ class ShadowScannerManager:
                             _logger.warning("[SHADOW] Provider support refresh failed: %s", _support_err)
                         next_support_refresh = support_now + 60.0
 
-                    import MetaTrader5 as mt5
-                    tf_map = {
-                        "M15": getattr(mt5, "TIMEFRAME_M15", 15),
-                        "H1": getattr(mt5, "TIMEFRAME_H1", 16385),
-                        "H4": getattr(mt5, "TIMEFRAME_H4", 16388),
-                    }
-
                     for sym in self.provider_supported_assets:
                         for tf in SHADOW_TIMEFRAMES:
                             if not getattr(self, "_scheduler_running", False):
                                 break
-                            tf_const = tf_map.get(tf.upper(), 15)
+                            tf_const = SUPPORTED_TIMEFRAMES.get(tf.upper())
+                            if tf_const is None:
+                                raise RuntimeError(f"Shadow timeframe sem codigo MT5: {tf}")
                             df_candles = pd.DataFrame()
                             try:
                                 candles_list = current_adapter.get_candles(sym, tf_const, count=100)

@@ -95,7 +95,7 @@ class ShadowObservationEngine:
 
         return {
             "candidate_id": candidate_id,
-            "total_universe_combinations": 39,
+            "total_universe_combinations": len(SHADOW_ASSETS) * len(SHADOW_TIMEFRAMES),
             "observed_combinations": observed_count,
             "healthy_combinations": healthy_cnt,
             "degraded_combinations": degraded_cnt,
@@ -151,7 +151,7 @@ class ShadowObservationEngine:
 
         return {
             "candidate_id": candidate_id,
-            "total_combinations": 39,
+            "total_combinations": len(SHADOW_ASSETS) * len(SHADOW_TIMEFRAMES),
             "combinations": combinations_progress,
         }
 

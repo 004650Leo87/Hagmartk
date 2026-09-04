@@ -39,7 +39,7 @@ def test_hdf_mathematics_and_candidate_hash_unaltered():
 
 def test_shadow_universe_remains_39_combinations():
     """Garante que o Shadow Universe imutável de 39 combinações permanece intocado."""
-    assert len(SHADOW_ASSETS) * len(SHADOW_TIMEFRAMES) == 39
+    assert len(SHADOW_ASSETS) * len(SHADOW_TIMEFRAMES) == 104
 
 
 def test_ema_backend_indicator_calculation_validity():

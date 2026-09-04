@@ -15,6 +15,7 @@ import {
   getShadowStatistics,
   getShadowStatus,
   getShadowTelemetry,
+  getTelegramNotificationStatus,
 } from "../services/api";
 
 const STATUS_CLASS = {
@@ -33,6 +34,8 @@ const STATUS_LABELS = {
 
 const FOREX = ["EURUSD","GBPUSD","USDJPY","AUDUSD","USDCHF","USDCAD","NZDUSD","EURJPY","GBPJPY"];
 const METALS = ["XAUUSD","XAGUSD"];
+const SHADOW_TIMEFRAMES = ["M5", "M15", "M30", "H1", "H2", "H4", "D1", "W1"];
+const SHADOW_TOTAL_COMBINATIONS = 13 * SHADOW_TIMEFRAMES.length;
 
 function getAssetClass(symbol) {
   if (FOREX.includes(symbol)) return "FOREX";
@@ -49,6 +52,7 @@ export default function ShadowStrategiesView() {
   const [forwardVal, setForwardVal] = useState(null);
   const [statVal, setStatVal] = useState(null);
   const [telemetry, setTelemetry] = useState(null);
+  const [telegramStatus, setTelegramStatus] = useState(null);
   const [intel, setIntel] = useState(null);
   const [evidence, setEvidence] = useState(null);
   const [obsHealth, setObsHealth] = useState(null);
@@ -79,7 +83,7 @@ export default function ShadowStrategiesView() {
   async function loadData() {
     setLoading(true);
     try {
-      const [candsRes, statusRes, statsRes, scannersRes, histRes, fwdRes, statRes, telemRes, intelRes, evRes, obsHRes, obsPRes] = await Promise.allSettled([
+      const [candsRes, statusRes, statsRes, scannersRes, histRes, fwdRes, statRes, telemRes, intelRes, evRes, obsHRes, obsPRes, telegramRes] = await Promise.allSettled([
         getShadowCandidates(),
         getShadowStatus(),
         getShadowStatistics(),
@@ -92,6 +96,7 @@ export default function ShadowStrategiesView() {
         getShadowEvidence(),
         getShadowObservationHealth(),
         getShadowObservationProgress(),
+        getTelegramNotificationStatus(),
       ]);
       if (candsRes.status === "fulfilled") setCandidates(candsRes.value);
       if (statusRes.status === "fulfilled") setStatus(statusRes.value);
@@ -105,6 +110,7 @@ export default function ShadowStrategiesView() {
       if (evRes.status === "fulfilled") setEvidence(evRes.value);
       if (obsHRes.status === "fulfilled") setObsHealth(obsHRes.value);
       if (obsPRes.status === "fulfilled") setObsProgress(obsPRes.value);
+      if (telegramRes.status === "fulfilled") setTelegramStatus(telegramRes.value);
       setError("");
     } catch {
       setError("Erro ao carregar dados do Shadow Mode.");
@@ -150,7 +156,8 @@ export default function ShadowStrategiesView() {
     });
   }, [scanners, monitorSearch, monitorAssetFilter, monitorTfFilter, monitorStatusFilter]);
 
-  const activeScannersCount = scanners.filter((s) => s.status === "RUNNING").length;
+  const activeScannersCount = scanners.filter((s) => ["RUNNING", "WAITING_NEW_CANDLE"].includes(s.status)).length;
+  const totalScannersCount = scanners.length || SHADOW_TOTAL_COMBINATIONS;
   const errorScannersCount = scanners.filter((s) => s.status === "ERROR").length;
 
   if (loading && !candidate) {
@@ -211,8 +218,8 @@ export default function ShadowStrategiesView() {
             <strong style={{ color: '#ef4444' }}>OFF (SEGURANÇA)</strong>
           </div>
           <div className="strategy-metric-box">
-            <span className="strategy-metric-label">Publicação Externa</span>
-            <strong style={{ color: '#64748b' }}>OFF (INTERNO)</strong>
+            <span className="strategy-metric-label">Alertas Telegram</span>
+            <strong style={{ color: telegramStatus?.ready ? '#34d399' : '#f59e0b' }}>{telegramStatus?.ready ? "ON (SHADOW/PAPER)" : "INDISPON\u00cdVEL"}</strong>
           </div>
         </div>
 
@@ -253,7 +260,7 @@ export default function ShadowStrategiesView() {
         {[
           { id: "overview", label: "Visão Geral" },
           { id: "forward_val", label: "Validação Prospectiva (Forward)" },
-          { id: "scanners", label: `Shadow Monitor (${scanners.length}/39)` },
+          { id: "scanners", label: `Shadow Monitor (${scanners.length}/${SHADOW_TOTAL_COMBINATIONS})` },
           { id: "statistics", label: "Estatísticas Prospectivas vs Histórico" },
           { id: "history", label: "Histórico Prospectivo" },
         ].map((tab) => (
@@ -277,8 +284,8 @@ export default function ShadowStrategiesView() {
           <div className="strategy-metrics-grid">
             {[
               { label: "Ativos Monitorados", value: "13", sub: "Shadow Universe" },
-              { label: "Timeframes", value: "3", sub: "M15 · H1 · H4" },
-              { label: "Combinações", value: "39", sub: "13 × 3 TF" },
+              { label: "Timeframes", value: String(SHADOW_TIMEFRAMES.length), sub: SHADOW_TIMEFRAMES.join(" / ") },
+              { label: "Combina\u00e7\u00f5es", value: String(SHADOW_TOTAL_COMBINATIONS), sub: "13 x 8 TF" },
               { label: "Scanners Ativos", value: activeScannersCount, sub: `de ${scanners.length} total`, color: activeScannersCount > 0 ? "#34d399" : "#64748b" },
               { label: "Com Erro", value: errorScannersCount, sub: "scanners", color: errorScannersCount > 0 ? "#f87171" : "#64748b" },
               { label: "Eventos Ativos", value: status?.active_events ?? 0, sub: "Armados + Ativados", color: "#f59e0b" },
@@ -302,8 +309,8 @@ export default function ShadowStrategiesView() {
         <div className="bg-slate-800/60 p-5 rounded-xl border border-slate-700/60 space-y-4">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
             {[
-              { label: "Total Combinações", value: "39", color: "" },
-              { label: "Scanners Ativos", value: `${activeScannersCount}/39`, color: activeScannersCount > 0 ? "text-emerald-400" : "text-slate-500" },
+              { label: "Total Combina\u00e7\u00f5es", value: String(SHADOW_TOTAL_COMBINATIONS), color: "" },
+              { label: "Scanners Ativos", value: `${activeScannersCount}/${totalScannersCount}`, color: activeScannersCount > 0 ? "text-emerald-400" : "text-slate-500" },
               { label: "Com Erro", value: errorScannersCount, color: errorScannersCount > 0 ? "text-red-400" : "" },
               { label: "Eventos Ativos", value: status?.active_events ?? 0, color: "text-amber-400" },
             ].map((m) => (
@@ -337,7 +344,7 @@ export default function ShadowStrategiesView() {
               ))}
             </div>
             <div className="shadow-monitor-filter-bar" style={{ margin: 0 }}>
-              {["TODOS", "M15", "H1", "H4"].map((f) => (
+              {["TODOS", ...SHADOW_TIMEFRAMES].map((f) => (
                 <button
                   key={f}
                   type="button"
@@ -485,7 +492,7 @@ export default function ShadowStrategiesView() {
           </h3>
           {history.length === 0 ? (
             <div className="text-xs text-slate-400 py-6 text-center bg-slate-900/40 rounded-lg">
-              Nenhum evento prospectivo finalizado ainda. O scanner monitoriza 39 combinações continuamente.
+              Nenhum evento prospectivo finalizado ainda. O scanner monitora 104 combina&ccedil;&otilde;es continuamente.
             </div>
           ) : (
             <div style={{ maxHeight: "400px", overflowY: "auto", border: "1px solid #1e293b", borderRadius: "8px" }}>
@@ -668,7 +675,7 @@ export default function ShadowStrategiesView() {
                 style={{ fontSize: "11px", padding: "4px 10px" }}
                 onClick={() => setShowTelemetryModal(true)}
               >
-                📊 Ver Detalhes (39 Combinações)
+                📊 Ver Detalhes (104 Combina&ccedil;&otilde;es)
               </button>
             </div>
 
@@ -709,7 +716,7 @@ export default function ShadowStrategiesView() {
             </div>
           </div>
 
-          {/* Modal / Drawer de Detalhes das 39 Combinações */}
+          {/* Modal / Drawer de Detalhes do universo configurado */}
           {showTelemetryModal && (
             <div style={{
               position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
@@ -724,8 +731,7 @@ export default function ShadowStrategiesView() {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
                   <div>
                     <h3 style={{ fontSize: "16px", fontWeight: "700", color: "#f8fafc", margin: 0 }}>
-                      TELEMETRIA DAS 39 COMBINAÇÕES DO SHADOW UNIVERSE
-                    </h3>
+                      TELEMETRIA DAS 104 COMBINA&Ccedil;&Otilde;ES DO SHADOW UNIVERSE</h3>
                     <span style={{ fontSize: "11px", color: "#94a3b8" }}>
                       Monitoramento individual por Instrumento x Timeframe
                     </span>
@@ -983,7 +989,7 @@ export default function ShadowStrategiesView() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", marginBottom: "12px" }}>
               <div>
                 <h4 style={{ fontSize: "13px", fontWeight: "700", color: "#f8fafc", margin: 0 }}>
-                  OBSERVAÇÃO PROSPECTIVA & ACUMULAÇÃO CONTINUADA (39 COMBINAÇÕES)
+                  OBSERVA&Ccedil;&Atilde;O PROSPECTIVA &amp; ACUMULA&Ccedil;&Atilde;O CONTINUADA (104 COMBINA&Ccedil;&Otilde;ES)
                 </h4>
                 <span style={{ fontSize: "11px", color: "#94a3b8" }}>
                   Acompanhamento continuado do crescimento real da amostra e saúde da observação sem look-ahead bias
@@ -1003,9 +1009,7 @@ export default function ShadowStrategiesView() {
                   style={{ background: "#0f172a", border: "1px solid #334155", color: "#f8fafc", padding: "4px 8px", borderRadius: "4px", fontSize: "11px" }}
                 >
                   <option value="TODOS">Todos TFs</option>
-                  <option value="M15">M15</option>
-                  <option value="H1">H1</option>
-                  <option value="H4">H4</option>
+                  {SHADOW_TIMEFRAMES.map((tf) => <option key={tf} value={tf}>{tf}</option>)}
                 </select>
               </div>
             </div>
@@ -1015,13 +1019,13 @@ export default function ShadowStrategiesView() {
               <div className="strategy-metric-box">
                 <span className="strategy-metric-label">Universo Shadow</span>
                 <strong style={{ color: "#f8fafc", fontSize: "12px" }}>
-                  {obsHealth?.total_universe_combinations ?? 39} combinações
+                  {obsHealth?.total_universe_combinations ?? SHADOW_TOTAL_COMBINATIONS} combinações
                 </strong>
               </div>
               <div className="strategy-metric-box">
                 <span className="strategy-metric-label">Observadas</span>
                 <strong style={{ color: "#34d399", fontSize: "12px" }}>
-                  {obsHealth?.observed_combinations ?? 0} / 39
+                  {obsHealth?.observed_combinations ?? 0} / {obsHealth?.total_universe_combinations ?? SHADOW_TOTAL_COMBINATIONS}
                 </strong>
               </div>
               <div className="strategy-metric-box">
@@ -1033,7 +1037,7 @@ export default function ShadowStrategiesView() {
               <div className="strategy-metric-box">
                 <span className="strategy-metric-label">Degradadas / Aguardando</span>
                 <strong style={{ color: obsHealth?.degraded_combinations > 0 ? "#ef4444" : "#94a3b8", fontSize: "12px" }}>
-                  {obsHealth?.degraded_combinations ?? 0} deg / {obsHealth?.insufficient_data_combinations ?? 39} aguard
+                  {obsHealth?.degraded_combinations ?? 0} deg / {obsHealth?.insufficient_data_combinations ?? SHADOW_TOTAL_COMBINATIONS} aguard
                 </strong>
               </div>
               <div className="strategy-metric-box">

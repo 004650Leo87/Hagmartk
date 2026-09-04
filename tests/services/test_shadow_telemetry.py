@@ -6,7 +6,7 @@ Cobre:
 3. Registro de failed checks (com códigos operacionais de erro)
 4. Agregação em janela de 1 hora e persistência no SQLite
 5. Proteção de duplicação por janela (UPSERT)
-6. Preservação das 39 combinações do Shadow Universe (13 ativos x 3 timeframes)
+6. Preservação das 39 combinações do Shadow Universe (13 ativos x 8 timeframes)
 7. Classificação de Health (UNKNOWN, HEALTHY, DEGRADED, UNAVAILABLE)
 8. Integração com StatisticalValidationEngine (cobertura real vs fallback null)
 """
@@ -36,7 +36,7 @@ def test_telemetry_starts_empty(temp_store):
     assert telemetry["global"]["failed_checks"] == 0
     assert telemetry["global"]["coverage"] is None
     assert telemetry["global"]["health"] == "UNKNOWN"
-    assert len(telemetry["combinations"]) == 39
+    assert len(telemetry["combinations"]) == 104
 
 
 def test_successful_check_recording(temp_store):

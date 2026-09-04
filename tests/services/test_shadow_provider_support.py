@@ -33,7 +33,7 @@ def test_refresh_persists_provider_support_and_marks_states(tmp_path):
     supported, unsupported = scanner.refresh_provider_support(FakeCatalogAdapter(supported_symbols))
     assert supported == supported_symbols
     assert unsupported == ["BTCUSD", "ETHUSD"]
-    assert len(scanner.provider_supported_assets) * len(SHADOW_TIMEFRAMES) == 33
+    assert len(scanner.provider_supported_assets) * len(SHADOW_TIMEFRAMES) == 88
 
     support = repo.get_provider_support()
     assert support["BTCUSD"]["supported"] is False
@@ -61,9 +61,9 @@ def test_unsupported_provider_failures_do_not_pollute_active_coverage(tmp_path):
 
     telemetry = repo.get_shadow_telemetry(candidate_id)
     global_row = telemetry["global"]
-    assert global_row["configured_combinations"] == 39
-    assert global_row["provider_supported_combinations"] == 33
-    assert global_row["provider_unsupported_combinations"] == 6
+    assert global_row["configured_combinations"] == 104
+    assert global_row["provider_supported_combinations"] == 88
+    assert global_row["provider_unsupported_combinations"] == 16
     assert global_row["unsupported_symbols"] == ["BTCUSD", "ETHUSD"]
     assert global_row["failed_checks"] == 0
     assert global_row["successful_checks"] == 1
