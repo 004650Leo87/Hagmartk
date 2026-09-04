@@ -29,6 +29,15 @@ _obs_engine = ShadowObservationEngine(store=_store, decision_engine=_evidence_en
 _fib_engine = FibonacciProspectiveTelemetryEngine(store=_store)
 
 
+def _is_visible_paper_event(evt) -> bool:
+    meta = evt.metadata or {}
+    if evt.event_id.startswith("test_") or meta.get("is_test") or meta.get("synthetic"):
+        return False
+    if meta.get("classification") in {"BOOTSTRAP_EXISTING", "RECOVERY_BACKFILL_IGNORED"}:
+        return False
+    return True
+
+
 @router.get("/forward-validation")
 def get_shadow_forward_validation(candidate_id: str = Query("hdf_dvp_exit_2r")) -> Dict[str, Any]:
     """Retorna o snapshot completo de validação prospectiva do Shadow Mode."""
@@ -354,7 +363,7 @@ def list_shadow_events(
     offset: int = Query(0, ge=0),
 ) -> Dict[str, Any]:
     """Lista eventos prospectivos do Shadow Mode com filtros e paginação."""
-    all_events = _store.list_history_events()
+    all_events = [e for e in _store.list_history_events() if _is_visible_paper_event(e)]
     filtered = []
     for evt in all_events:
         if symbol and evt.symbol != symbol:
@@ -378,7 +387,7 @@ def list_recent_shadow_events(
     """Retorna os N eventos mais recentes para polling do toast. Deve ficar ANTES de /events/{event_id}."""
     all_events = _store.list_history_events()
     if not include_test:
-        all_events = [e for e in all_events if not e.event_id.startswith("test_") and not getattr(e, "is_test", False)]
+        all_events = [e for e in all_events if _is_visible_paper_event(e)]
     recent = all_events[:n]
     formatted = [InternalAlertEngine.format_market_alert(e) for e in recent]
     # Filtrar por toast-worthy states
@@ -412,14 +421,14 @@ def get_shadow_event_detail(event_id: str) -> Dict[str, Any]:
 @router.get("/active")
 def list_active_shadow_alerts() -> List[Dict[str, Any]]:
     """Retorna alertas ativos (ARMED, ACTIVATED) para a seção de Alertas de Mercado do Painel."""
-    active_evts = _store.list_active_events()
+    active_evts = [e for e in _store.list_active_events() if _is_visible_paper_event(e)]
     return [InternalAlertEngine.format_market_alert(e) for e in active_evts]
 
 
 @router.get("/history")
 def list_completed_shadow_history() -> List[Dict[str, Any]]:
     """Retorna o histórico completo de eventos prospectivos finalizados do Shadow Mode."""
-    all_evts = _store.list_history_events()
+    all_evts = [e for e in _store.list_history_events() if _is_visible_paper_event(e)]
     completed = [e for e in all_evts if e.current_state in ("TARGET_2R", "STOPPED", "EXPIRED", "INVALIDATED")]
     return [InternalAlertEngine.format_market_alert(e) for e in completed]
 
