@@ -14,9 +14,11 @@ from __future__ import annotations
 
 import os
 import sqlite3
+from datetime import datetime, timezone
 import pytest
 from unittest.mock import MagicMock
 
+from backend.domain.shadow_models import ShadowScannerState
 from backend.services.shadow_store import ShadowStoreRepository
 from backend.services.shadow_statistical_validation import ShadowStatisticalValidationEngine
 
@@ -221,3 +223,71 @@ def test_h1_and_h4_expected_slots_follow_real_boundaries(temp_store):
     assert h1["failed_checks"] == 1
     assert h4["expected_checks"] == 1
     assert h4["failed_checks"] == 1
+
+
+def test_missing_telemetry_row_still_counts_expected_slot(temp_store, monkeypatch):
+    candidate = "hdf_dvp_exit_2r"
+    temp_store.save_shadow_session(candidate, "2026-09-04T10:00:00+00:00", True)
+    temp_store.save_telemetry_session(candidate, "2026-09-04T10:10:00+00:00")
+    temp_store.save_scanner_state(ShadowScannerState(
+        candidate_id=candidate, symbol="EURUSD", timeframe="M15",
+        last_processed_candle="2026-09-04T10:00:00+00:00",
+    ))
+    monkeypatch.setattr(
+        "backend.core.time_utils.now_utc_datetime",
+        lambda: datetime(2026, 9, 4, 10, 16, tzinfo=timezone.utc),
+    )
+
+    telemetry = temp_store.get_shadow_telemetry(candidate)
+    comb = next(c for c in telemetry["combinations"] if c["symbol"] == "EURUSD" and c["timeframe"] == "M15")
+    assert comb["expected_checks"] == 1
+    assert comb["successful_checks"] == 0
+    assert comb["coverage"] == 0.0
+    assert comb["health"] == "UNAVAILABLE"
+
+
+def test_h4_expected_denominator_respects_observed_broker_phase(temp_store, monkeypatch):
+    candidate = "hdf_dvp_exit_2r"
+    temp_store.save_shadow_session(candidate, "2026-09-04T01:40:49+00:00", True)
+    temp_store.save_telemetry_session(candidate, "2026-09-04T11:56:21+00:00")
+    temp_store.save_scanner_state(ShadowScannerState(
+        candidate_id=candidate, symbol="USDJPY", timeframe="H4",
+        last_processed_candle="2026-09-04T05:00:00+00:00",
+    ))
+    monkeypatch.setattr(
+        "backend.core.time_utils.now_utc_datetime",
+        lambda: datetime(2026, 9, 4, 12, 5, tzinfo=timezone.utc),
+    )
+    before = temp_store.get_shadow_telemetry(candidate)
+    h4 = next(c for c in before["combinations"] if c["symbol"] == "USDJPY" and c["timeframe"] == "H4")
+    assert h4["expected_checks"] == 0
+
+    monkeypatch.setattr(
+        "backend.core.time_utils.now_utc_datetime",
+        lambda: datetime(2026, 9, 4, 13, 1, tzinfo=timezone.utc),
+    )
+    after = temp_store.get_shadow_telemetry(candidate)
+    h4 = next(c for c in after["combinations"] if c["symbol"] == "USDJPY" and c["timeframe"] == "H4")
+    assert h4["expected_checks"] == 1
+    assert h4["coverage"] == 0.0
+
+
+def test_h4_failure_is_recorded_on_observed_broker_phase(temp_store):
+    candidate = "hdf_dvp_exit_2r"
+    temp_store.save_shadow_session(candidate, "2026-09-04T01:40:49+00:00", True)
+    temp_store.save_telemetry_session(candidate, "2026-09-04T11:56:21+00:00")
+    temp_store.save_scanner_state(ShadowScannerState(
+        candidate_id=candidate, symbol="USDJPY", timeframe="H4",
+        last_processed_candle="2026-09-04T05:00:00+00:00",
+    ))
+
+    temp_store.record_scanner_telemetry(
+        candidate, "USDJPY", "H4", success=False,
+        error_code="MARKET_DATA_UNAVAILABLE", now_str="2026-09-04T13:00:01+00:00",
+    )
+    with temp_store._get_connection() as conn:
+        row = conn.execute(
+            "SELECT expected_checks, successful_checks, failed_checks FROM shadow_scanner_telemetry WHERE candidate_id=? AND symbol=? AND timeframe=?",
+            (candidate, "USDJPY", "H4"),
+        ).fetchone()
+    assert tuple(row) == (1, 0, 1)

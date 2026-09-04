@@ -903,39 +903,77 @@ class ShadowStoreRepository:
         )
 
     @staticmethod
-    def _expected_checks_for_window(candidate_id: str, timeframe: str, now_dt, cursor) -> int:
-        """Expected closed-candle slots elapsed in the current UTC hour.
-
-        The lower bound respects both Shadow T0 and the independent telemetry T0.
-        """
-        from datetime import timedelta
+    def _telemetry_lower_bound(candidate_id: str, cursor):
         from backend.core.time_utils import parse_utc_timestamp
-
-        tf = timeframe.upper()
-        tf_minutes = {"M15": 15, "H1": 60, "H4": 240}.get(tf)
-        if tf_minutes is None:
-            return 0
-
-        hour_start = now_dt.replace(minute=0, second=0, microsecond=0)
-        lower_bound = hour_start
-
+        lower_bound = None
         for table in ("shadow_session", "shadow_telemetry_session"):
             row = cursor.execute(
-                f"SELECT started_at FROM {table} WHERE candidate_id = ?",
-                (candidate_id,),
+                f"SELECT started_at FROM {table} WHERE candidate_id = ?", (candidate_id,)
             ).fetchone()
             dt = parse_utc_timestamp(row[0]) if row and row[0] else None
-            if dt is not None and dt > lower_bound:
+            if dt is not None and (lower_bound is None or dt > lower_bound):
                 lower_bound = dt
+        return lower_bound
 
-        if tf == "M15":
-            boundaries = [hour_start + timedelta(minutes=m) for m in (0, 15, 30, 45)]
-        elif tf == "H1":
-            boundaries = [hour_start]
-        else:  # H4
-            boundaries = [hour_start] if hour_start.hour % 4 == 0 else []
+    @staticmethod
+    def _scanner_close_anchor(candidate_id: str, symbol: str, timeframe: str, cursor):
+        from datetime import timedelta
+        from backend.core.time_utils import parse_utc_timestamp
+        tf_minutes = {"M15": 15, "H1": 60, "H4": 240}.get(timeframe.upper())
+        if tf_minutes is None:
+            return None
+        row = cursor.execute(
+            "SELECT last_processed_candle FROM shadow_scanner_state WHERE candidate_id = ? AND symbol = ? AND timeframe = ?",
+            (candidate_id, symbol, timeframe),
+        ).fetchone()
+        opened_at = parse_utc_timestamp(row[0]) if row and row[0] else None
+        return opened_at + timedelta(minutes=tf_minutes) if opened_at is not None else None
 
-        return sum(1 for boundary in boundaries if lower_bound <= boundary <= now_dt)
+    @staticmethod
+    def _count_expected_boundaries(lower_bound, now_dt, anchor, tf_minutes: int) -> int:
+        import math
+        from datetime import timedelta
+        if lower_bound is None or anchor is None or now_dt < lower_bound:
+            return 0
+        step_seconds = tf_minutes * 60
+        n = math.ceil((lower_bound - anchor).total_seconds() / step_seconds)
+        first = anchor + timedelta(seconds=n * step_seconds)
+        if first < lower_bound:
+            first += timedelta(seconds=step_seconds)
+        if first > now_dt:
+            return 0
+        return int((now_dt - first).total_seconds() // step_seconds) + 1
+
+    @classmethod
+    def _expected_checks_for_window(cls, candidate_id: str, symbol: str, timeframe: str, now_dt, cursor) -> int:
+        """Expected slots in the current UTC hour, aligned to the observed broker candle phase."""
+        tf_minutes = {"M15": 15, "H1": 60, "H4": 240}.get(timeframe.upper())
+        if tf_minutes is None:
+            return 0
+        hour_start = now_dt.replace(minute=0, second=0, microsecond=0)
+        session_bound = cls._telemetry_lower_bound(candidate_id, cursor)
+        lower_bound = max(hour_start, session_bound) if session_bound is not None else hour_start
+        anchor = cls._scanner_close_anchor(candidate_id, symbol, timeframe, cursor)
+        if anchor is None:
+            anchor = hour_start
+        return cls._count_expected_boundaries(lower_bound, now_dt, anchor, tf_minutes)
+
+    @classmethod
+    def _expected_checks_since_telemetry_t0(cls, candidate_id: str, symbol: str, timeframe: str, now_dt, cursor) -> int:
+        """Independent denominator: expected close slots even when no telemetry row was written."""
+        tf_minutes = {"M15": 15, "H1": 60, "H4": 240}.get(timeframe.upper())
+        if tf_minutes is None:
+            return 0
+        telemetry_row = cursor.execute(
+            "SELECT started_at FROM shadow_telemetry_session WHERE candidate_id = ?", (candidate_id,)
+        ).fetchone()
+        if telemetry_row is None or not telemetry_row[0]:
+            return 0
+        lower_bound = cls._telemetry_lower_bound(candidate_id, cursor)
+        anchor = cls._scanner_close_anchor(candidate_id, symbol, timeframe, cursor)
+        if anchor is None:
+            return 0
+        return cls._count_expected_boundaries(lower_bound, now_dt, anchor, tf_minutes)
 
     def record_scanner_telemetry(
         self,
@@ -963,6 +1001,7 @@ class ShadowStoreRepository:
             cursor = conn.cursor()
             nominal_expected = self._expected_checks_for_window(
                 candidate_id=candidate_id,
+                symbol=symbol,
                 timeframe=timeframe,
                 now_dt=now_dt,
                 cursor=cursor,
@@ -1035,7 +1074,9 @@ class ShadowStoreRepository:
     def get_shadow_telemetry(self, candidate_id: str = "hdf_dvp_exit_2r") -> Dict[str, Any]:
         """Coverage of provider-supported Shadow combinations; configured universe remains auditable."""
         from backend.services.shadow_scanner import SHADOW_ASSETS, SHADOW_TIMEFRAMES, get_asset_class
+        from backend.core.time_utils import now_utc_datetime
 
+        now_dt = now_utc_datetime()
         provider_support = self.get_provider_support()
         supported_assets = [
             sym for sym in SHADOW_ASSETS
@@ -1066,7 +1107,11 @@ class ShadowStoreRepository:
                         (candidate_id, sym, tf),
                     )
                     row = cursor.fetchone()
-                    exp = int(row["sum_exp"] or 0)
+                    stored_exp = int(row["sum_exp"] or 0)
+                    derived_exp = self._expected_checks_since_telemetry_t0(
+                        candidate_id, sym, tf, now_dt, cursor
+                    ) if provider_supported else 0
+                    exp = max(stored_exp, derived_exp)
                     succ = int(row["sum_succ"] or 0)
                     fail = int(row["sum_fail"] or 0)
                     last_succ = row["max_succ_at"] if row else None
