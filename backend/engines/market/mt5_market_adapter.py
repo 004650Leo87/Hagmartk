@@ -175,6 +175,9 @@ class MT5MarketAdapter(MarketAdapter):
 
         return mapping
 
+    def get_runtime_scope(self) -> Dict[str, Any]:
+        return dict(self._runtime_scope)
+
     def get_connection_info(self) -> Dict[str, Any]:
         mt5 = self._load_mt5()
 
@@ -241,6 +244,54 @@ class MT5MarketAdapter(MarketAdapter):
             "point": point,
             "time": tick_time,
         }
+
+    def get_ticks(
+        self,
+        symbol: str,
+        from_time: datetime,
+        to_time: datetime,
+    ) -> List[Dict[str, Any]]:
+        """Return read-only Bid/Ask ticks normalized to real UTC."""
+        mt5 = self._load_mt5()
+        symbol = symbol.upper().strip()
+        if from_time.tzinfo is None or to_time.tzinfo is None:
+            raise ValueError("Tick range requires timezone-aware datetimes")
+        if to_time <= from_time:
+            raise ValueError("Tick range end must be after start")
+        info = mt5.symbol_info(symbol)
+        if info is None:
+            raise AdapterError(f"Symbol not found: {symbol}")
+        if not info.visible and not mt5.symbol_select(symbol, True):
+            raise AdapterError(f"Failed to select symbol '{symbol}'")
+        rates = mt5.copy_ticks_range(
+            symbol,
+            self._to_broker_query_time(from_time),
+            self._to_broker_query_time(to_time),
+            getattr(mt5, "COPY_TICKS_INFO", 0),
+        )
+        if rates is None:
+            last = getattr(mt5, "last_error", lambda: None)()
+            raise AdapterError(f"No tick data for '{symbol}': {last}")
+        ticks: List[Dict[str, Any]] = []
+        for row in rates:
+            def field(key: str, default: Any = 0) -> Any:
+                try:
+                    return row[key]
+                except Exception:
+                    return getattr(row, key, default)
+            raw_msc = int(field("time_msc", 0) or 0)
+            raw_sec = float(field("time", 0) or 0)
+            raw_epoch = raw_msc / 1000.0 if raw_msc > 0 else raw_sec
+            timestamp = self._normalize_broker_epoch(raw_epoch).isoformat()
+            ticks.append({
+                "time": timestamp,
+                "bid": float(field("bid", 0.0) or 0.0),
+                "ask": float(field("ask", 0.0) or 0.0),
+                "last": float(field("last", 0.0) or 0.0),
+                "volume": float(field("volume", 0.0) or 0.0),
+                "flags": int(field("flags", 0) or 0),
+            })
+        return ticks
 
     def get_candles(
         self,

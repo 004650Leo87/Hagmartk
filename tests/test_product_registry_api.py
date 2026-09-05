@@ -15,7 +15,9 @@ def test_strategy_registry_api_exposes_only_product_contracts():
     assert set(by_id) == {"hagmartk_divergence_flow", "cycle_theory_v111_fidelity"}
     assert by_id["hagmartk_divergence_flow"]["stage"] == "SHADOW"
     assert by_id["hagmartk_divergence_flow"]["real_order_execution_allowed"] is False
-    assert by_id["cycle_theory_v111_fidelity"]["stage"] == "FIDELITY"
+    assert by_id["cycle_theory_v111_fidelity"]["stage"] == "VALIDATION"
+    assert by_id["cycle_theory_v111_fidelity"]["candidate_id"] == "cycle_theory_v111_baseline"
+    assert len(by_id["cycle_theory_v111_fidelity"]["parameter_hash"]) == 64
 
 
 def test_evidence_registry_api_exposes_declared_contracts():

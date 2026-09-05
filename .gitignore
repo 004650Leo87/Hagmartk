@@ -32,6 +32,7 @@ Thumbs.db
 apply.js
 data_cache/*.db-journal
 data_cache/backups/
+artifacts/
 
 # Local secrets (never commit)
 secrets/

@@ -95,6 +95,14 @@ def make_fake_mt5_module():
         n = min(10, max(1, seconds // 60))
         return copy_rates_from_pos(symbol, timeframe, 0, n)
 
+    def copy_ticks_range(symbol, from_time, to_time, flags):
+        fake.last_tick_range_args = (from_time, to_time, flags)
+        base = 1620000000
+        return [
+            {"time": base, "time_msc": base * 1000 + 125, "bid": 1.1, "ask": 1.1002, "last": 1.1001, "volume": 1.0, "flags": 2},
+            {"time": base, "time_msc": base * 1000 + 500, "bid": 1.1001, "ask": 1.1003, "last": 1.1002, "volume": 2.0, "flags": 2},
+        ]
+
     fake.last_error = last_error
     fake.initialize = initialize
     fake.shutdown = shutdown
@@ -105,6 +113,8 @@ def make_fake_mt5_module():
     fake.symbol_select = symbol_select
     fake.copy_rates_from_pos = copy_rates_from_pos
     fake.copy_rates_range = copy_rates_range
+    fake.copy_ticks_range = copy_ticks_range
+    fake.COPY_TICKS_INFO = 2
 
     return fake
 
@@ -181,5 +191,27 @@ def test_mt5_adapter_normalizes_configured_broker_time_offset(monkeypatch):
     assert sent_start == start + timedelta(hours=3)
     assert sent_end == end + timedelta(hours=3)
 
+    adapter.disconnect()
+    del sys.modules["MetaTrader5"]
+
+
+def test_mt5_adapter_get_ticks_uses_scoped_clock_and_preserves_subsecond_order():
+    fake_mt5 = make_fake_mt5_module()
+    sys.modules["MetaTrader5"] = fake_mt5
+    adapter = MT5MarketAdapter(
+        runtime_scope={"server": "Tickmill-Live", "broker_time_offset_hours": 3}
+    )
+    adapter.connect()
+    start = datetime(2026, 9, 4, 10, 0, tzinfo=timezone.utc)
+    end = start + timedelta(minutes=1)
+
+    ticks = adapter.get_ticks("EURUSD", start, end)
+
+    sent_start, sent_end, flags = fake_mt5.last_tick_range_args
+    assert sent_start == start + timedelta(hours=3)
+    assert sent_end == end + timedelta(hours=3)
+    assert flags == fake_mt5.COPY_TICKS_INFO
+    assert len(ticks) == 2
+    assert ticks[0]["time"] < ticks[1]["time"]
     adapter.disconnect()
     del sys.modules["MetaTrader5"]

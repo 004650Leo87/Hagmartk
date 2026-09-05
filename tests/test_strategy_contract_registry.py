@@ -36,10 +36,12 @@ def test_hdf_contract_preserves_canonical_candidate_hash_and_shadow_stage():
     assert hdf.real_order_execution_allowed is False
 
 
-def test_cycle_theory_contract_is_fidelity_only_and_not_publishable():
+def test_cycle_theory_contract_is_validation_only_and_not_publishable():
     cycle = build_product_strategy_registry().get("cycle_theory_v111_fidelity", "111.00")
     assert cycle is not None
-    assert cycle.stage == ProductStrategyStage.FIDELITY
+    assert cycle.stage == ProductStrategyStage.VALIDATION
+    assert cycle.candidate_id == "cycle_theory_v111_baseline"
+    assert len(cycle.parameter_hash) == 64
     assert cycle.publication_capability == PublicationCapability.NONE
     assert cycle.allowed_event_classes == (MarketEventClass.RESEARCH_UPDATE,)
     assert cycle.real_order_execution_allowed is False

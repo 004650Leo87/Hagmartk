@@ -6,6 +6,10 @@ from typing import Dict, Optional, Tuple
 
 from backend.domain.candidate import HDF_CANDIDATE_V1_PARAMETER_HASH, HDF_ROBUST_CANDIDATE_V1
 from backend.domain.market_events import MarketEventClass
+from backend.strategies.cycle_theory.validation_candidate import (
+    CYCLE_THEORY_V111_BASELINE,
+    CYCLE_THEORY_V111_BASELINE_HASH,
+)
 
 
 class ProductStrategyStage(str, Enum):
@@ -125,19 +129,21 @@ def build_product_strategy_registry() -> StrategyContractRegistry:
     cycle_v111 = StrategyContract(
         strategy_id="cycle_theory_v111_fidelity",
         version="111.00",
-        display_name="Cycle Theory V111 — Fidelity Port",
+        display_name="Cycle Theory V111 — Validation Baseline",
         family="CYCLE_THEORY",
-        stage=ProductStrategyStage.FIDELITY,
+        stage=ProductStrategyStage.VALIDATION,
         source_of_truth="TEORIA_DOS_CICLOS_ULTIMATE_1.mq5 v111.00",
         owner_module="backend.strategies.cycle_theory",
+        candidate_id=CYCLE_THEORY_V111_BASELINE.candidate_id,
+        parameter_hash=CYCLE_THEORY_V111_BASELINE_HASH,
         publication_capability=PublicationCapability.NONE,
         publication_gate_id="",
         allowed_event_classes=(MarketEventClass.RESEARCH_UPDATE,),
         evidence_keys=("CYCLE_THEORY_V111_FIDELITY_EVIDENCE",),
         real_order_execution_allowed=False,
         limitations=(
-            "Research/fidelity port only.",
-            "Execution-sensitive MT5 parity remains partial/modelled at the current safe boundary.",
+            "Validation baseline; publication remains disabled.",
+            "Observed Bid/Ask tick replay is available, but broker acceptance, slippage, commission and swap remain partial/modelled.",
             "No profitability or real-trading claim is authorized.",
         ),
     )
