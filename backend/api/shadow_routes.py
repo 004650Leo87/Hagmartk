@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 
 from backend.domain.candidate import HDF_CANDIDATE_V1_PARAMETER_HASH, HDF_ROBUST_CANDIDATE_V1
 from backend.services.alert_engine import InternalAlertEngine
@@ -62,6 +62,21 @@ def get_shadow_telemetry(candidate_id: str = Query("hdf_dvp_exit_2r")) -> Dict[s
 def get_fibonacci_research(candidate_id: str = Query("hdf_dvp_exit_2r")) -> Dict[str, Any]:
     """Retorna o resumo prospectivo de pesquisa Fibonacci (READ-ONLY / NO PROMOTION)."""
     return _fib_engine.build_research_summary(candidate_id=candidate_id)
+
+
+@router.get("/cycle-theory/status")
+def get_cycle_theory_shadow_status(request: Request) -> Dict[str, Any]:
+    """Runtime seguro da Teoria dos Ciclos prospectiva; nunca exp?e segredos."""
+    system = getattr(request.app.state, "system", None) or {}
+    scanner = system.get("cycle_theory_scanner") if isinstance(system, dict) else None
+    if scanner is None:
+        return {
+            "enabled": False,
+            "candidate_id": "cycle_theory_v111_baseline",
+            "real_order_execution_enabled": False,
+            "reason": "CYCLE_THEORY_SHADOW_NOT_STARTED",
+        }
+    return scanner.status()
 
 
 @router.get("/notifications/telegram/status")

@@ -86,6 +86,33 @@ class TelegramNotifier:
                 type(exc).__name__,
             )
 
+    def notify_cycle_async(self, event: Dict[str, Any]) -> bool:
+        if not self.status()["ready"]:
+            return False
+        event_id = str(event.get("event_id") or "cycle_theory_event")
+        thread = threading.Thread(
+            target=self._safe_send_cycle,
+            args=(dict(event),),
+            daemon=True,
+            name=f"TelegramCycle-{event_id}",
+        )
+        thread.start()
+        return True
+
+    def _safe_send_cycle(self, event: Dict[str, Any]) -> None:
+        try:
+            self._send_payload(
+                self._format_cycle_message(event),
+                str(event.get("event_type") or "CYCLE_EVENT"),
+                str(event.get("event_id") or "cycle_theory_event"),
+                source="HAGMARTK_CYCLE_THEORY_SHADOW",
+            )
+        except Exception as exc:
+            _logger.warning(
+                "[TELEGRAM] Cycle Theory delivery failed event_id=%s error=%s",
+                event.get("event_id"), type(exc).__name__,
+            )
+
     def send_test_async(self) -> bool:
         if not self.status()["ready"]:
             return False
@@ -239,13 +266,81 @@ class TelegramNotifier:
         ])
         return "\n".join(lines)
 
-    def _send_payload(self, text: str, event_type: ShadowEventType | None, event_id: str) -> None:
+    @classmethod
+    def _format_cycle_message(cls, event: Dict[str, Any]) -> str:
+        labels = {
+            "CHANNEL_DEFINED": ("??", "CANAL DO CICLO DEFINIDO"),
+            "EXPANSION_WAIT_BUY": ("??", "EXPANS?O APONTA COMPRA"),
+            "EXPANSION_WAIT_SELL": ("??", "EXPANS?O APONTA VENDA"),
+            "SETUP_REVERSED": ("??", "INVERS?O DO CICLO"),
+            "EXPANSION_CONFIRMED": ("?", "EXPANS?O CONFIRMADA"),
+            "ORDER_SUBMITTED": ("??", "ORDEM PAPER GERADA"),
+            "LIMIT_FILLED": ("?", "ENTRADA PAPER ATIVADA"),
+            "PARTIAL_EXECUTED": ("??", "PARCIAL REALIZADA"),
+            "BREAKEVEN_APPLIED": ("??", "BREAKEVEN APLICADO"),
+            "TARGET_LEVEL_REACHED": ("??", "ALVO DO CICLO ATINGIDO"),
+            "TAKE_PROFIT": ("??", "ALVO FINAL ATINGIDO"),
+            "STOP_LOSS": ("??", "STOP DO CICLO ATINGIDO"),
+            "POSITION_CLOSED": ("??", "OPERA??O PAPER ENCERRADA"),
+            "PULLBACK_MISSED": ("?", "PULLBACK PERDIDO"),
+        }
+        event_type = str(event.get("event_type") or "CYCLE_EVENT")
+        icon, label = labels.get(event_type, ("??", event_type.replace("_", " ")))
+        direction = str(event.get("direction") or "NEUTRO").upper()
+        direction_label = {"BUY": "? COMPRA", "SELL": "? VENDA", "NEUTRO": "?"}.get(direction, direction)
+        levels = event.get("levels") or {}
+        payload = event.get("payload") or {}
+        lines = [
+            "?? <b>HAGMARTK SHADOW ? TEORIA DOS CICLOS V111</b>",
+            "??????????????????",
+            "",
+            f"{icon} <b>{cls._esc(label)}</b>",
+            "",
+            "?? <b>MERCADO</b>",
+            f"Ativo: <b>{cls._esc(event.get('symbol'))}</b>",
+            f"Tempo gr?fico: <b>{cls._esc(event.get('timeframe'))}</b>",
+            f"Dire??o: <b>{cls._esc(direction_label)}</b>",
+            "",
+            "?? <b>ESTRUTURA DO CICLO</b>",
+            f"Canal superior: <code>{cls._fmt_price(levels.get('channel_high'))}</code>",
+            f"Canal inferior: <code>{cls._fmt_price(levels.get('channel_low'))}</code>",
+            f"N?vel de expans?o: <code>{cls._fmt_price(levels.get('expansion'))}</code>",
+            "",
+        ]
+        if any(levels.get(k) for k in ("entry", "stop", "target_1", "target_2", "target_3")):
+            lines.extend([
+                "?? <b>N?VEIS PAPER</b>",
+                f"Entrada: <code>{cls._fmt_price(levels.get('entry'))}</code>",
+                f"Stop: <code>{cls._fmt_price(levels.get('stop'))}</code>",
+                f"Alvo 1: <code>{cls._fmt_price(levels.get('target_1'))}</code>",
+                f"Alvo 2: <code>{cls._fmt_price(levels.get('target_2'))}</code>",
+                f"Alvo 3: <code>{cls._fmt_price(levels.get('target_3'))}</code>",
+                "",
+            ])
+        detail = payload.get("detail") or payload.get("reason")
+        if detail:
+            lines.extend(["?? <b>LEITURA DO MOTOR</b>", cls._esc(detail), ""])
+        lines.extend([
+            "?? <b>VALIDA??O PROSPECTIVA</b>",
+            "Fonte: <b>mercado real / MT5</b>",
+            "Execu??o: <b>SHADOW / PAPER</b>",
+            "Ordem real: <b>N?O</b>",
+            "Probabilidade de alvo: <b>n?o calibrada</b>",
+            "",
+            "?? <b>REGISTRO</b>",
+            f"Evento: <code>{cls._esc(event.get('event_time'))}</code>",
+        ])
+        return "\n".join(lines)
+
+    def _send_payload(
+        self, text: str, event_type: Any, event_id: str, source: str = "HAGMARTK_SHADOW_PAPER"
+    ) -> None:
         if self.config.mode == "WEBHOOK":
             url = self.config.webhook_url
             payload = {
                 "text": text,
-                "source": "HAGMARTK_SHADOW_PAPER",
-                "event_type": event_type.value if event_type else "TEST",
+                "source": source,
+                "event_type": (event_type.value if hasattr(event_type, "value") else str(event_type or "TEST")),
                 "event_id": event_id,
             }
         elif self.config.mode == "BOT_API":

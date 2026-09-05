@@ -86,6 +86,12 @@ def start_system(system: Dict) -> None:
         scanner = system.get("shadow_scanner") or ShadowScannerManager()
         system["shadow_scanner"] = scanner
         scanner.start_auto_scheduler(adapter=market_engine.adapter, interval_seconds=3.0)
+
+        if os.environ.get("HAGMARTK_CYCLE_THEORY_SHADOW", "0").strip().lower() in {"1", "true", "yes", "on"}:
+            from backend.services.cycle_theory_shadow import CycleTheoryProspectiveScanner
+            cycle_scanner = system.get("cycle_theory_scanner") or CycleTheoryProspectiveScanner()
+            system["cycle_theory_scanner"] = cycle_scanner
+            cycle_scanner.start(adapter=market_engine.adapter, interval_seconds=3.0)
     except Exception as error:
         logger.error("Failed to start system: %s", error)
         raise
@@ -97,6 +103,13 @@ def shutdown_system(system: Dict) -> None:
     if scanner is not None and hasattr(scanner, "stop_auto_scheduler"):
         try:
             scanner.stop_auto_scheduler()
+        except Exception:
+            pass
+
+    cycle_scanner = system.get("cycle_theory_scanner")
+    if cycle_scanner is not None and hasattr(cycle_scanner, "stop"):
+        try:
+            cycle_scanner.stop()
         except Exception:
             pass
 

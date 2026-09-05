@@ -30,6 +30,7 @@ def test_registry_contains_only_declared_product_evidence_contracts():
         "HDF_SHADOW_EVIDENCE_V1",
         "HDF_FIBONACCI_RESEARCH_V1",
         "CYCLE_THEORY_V111_FIDELITY_EVIDENCE",
+        "CYCLE_THEORY_V111_SHADOW_EVIDENCE",
     }
 
 
@@ -43,6 +44,13 @@ def test_research_only_evidence_cannot_support_quant_event():
     assert cycle is not None
     assert cycle.research_only is True
     assert cycle.can_support_quant_event is False
+
+    cycle_shadow = build_product_evidence_registry().get("CYCLE_THEORY_V111_SHADOW_EVIDENCE")
+    assert cycle_shadow is not None
+    assert cycle_shadow.provenance == EvidenceProvenance.SHADOW
+    assert cycle_shadow.research_only is False
+    assert cycle_shadow.can_support_quant_event is True
+    assert cycle_shadow.publication_gate_required is True
 
 
 def test_shadow_evidence_can_only_support_quant_event_through_gate():

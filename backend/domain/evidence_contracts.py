@@ -143,6 +143,31 @@ def build_product_evidence_registry() -> EvidenceContractRegistry:
             ),
         )
     )
+
+    registry.register(
+        EvidenceContract(
+            evidence_key="CYCLE_THEORY_V111_SHADOW_EVIDENCE",
+            strategy_id="cycle_theory_v111_fidelity",
+            strategy_version="111.00",
+            display_name="Cycle Theory V111 Prospective Shadow Evidence",
+            owner_module="backend.services.cycle_theory_shadow",
+            provenance=EvidenceProvenance.SHADOW,
+            storage_kind="SQLITE_TABLE",
+            storage_ref="cycle_theory_shadow_events",
+            purpose="Prospective V111 market occurrences and PAPER lifecycle across the broker catalog.",
+            mutation_contract="APPEND_ONLY_EVENT_LEDGER_IDENTITY_STABLE",
+            research_only=False,
+            can_support_quant_event=True,
+            publication_gate_required=True,
+            live_filter="runtime=LIVE_PROSPECTIVE AND paper_only=1",
+            audit_retained=True,
+            limitations=(
+                "Private Telegram alerts are observation evidence, not recommendations.",
+                "Real broker orders are forbidden.",
+                "Target probabilities are not published until calibrated prospectively.",
+            ),
+        )
+    )
     return registry
 
 

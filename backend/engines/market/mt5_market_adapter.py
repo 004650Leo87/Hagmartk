@@ -153,6 +153,8 @@ class MT5MarketAdapter(MarketAdapter):
                     "currency_profit": getattr(info, "currency_profit", "") or "",
                     "trade_mode": getattr(info, "trade_mode", None),
                     "spread": getattr(info, "spread", 0),
+                    "trade_stops_level": int(getattr(info, "trade_stops_level", 0) or 0),
+                    "trade_freeze_level": int(getattr(info, "trade_freeze_level", 0) or 0),
                     "volume_min": float(getattr(info, "volume_min", 0.0)),
                     "volume_max": float(getattr(info, "volume_max", 0.0)),
                     "volume_step": float(getattr(info, "volume_step", 0.0)),

@@ -36,7 +36,7 @@ class CycleTheoryValidationCandidate:
     strategy_id: str = "cycle_theory_v111_fidelity"
     source_version: str = "111.00"
     source_sha256: str = CYCLE_THEORY_V111_SOURCE_SHA256
-    research_status: str = "BASELINE_SCREENING"
+    research_status: str = "PROSPECTIVE_SHADOW"
 
     def parameter_payload(self) -> dict[str, Any]:
         return baseline_parameter_payload()
