@@ -103,14 +103,36 @@ def get_timeframes():
         ) from error
 
 
+@router.get("/market/providers/status")
+def get_market_provider_status():
+    """Status seguro das fontes de dados de mercado configuradas."""
+    try:
+        return market.provider_status()
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=f"Erro ao consultar fontes de mercado: {error}") from error
+
+
+@router.get("/market/crypto/futures/{symbol}/metrics")
+def get_crypto_futures_metrics(symbol: str):
+    """Mark price, index price e funding do perpétuo Binance USD-M (somente leitura)."""
+    try:
+        return market.crypto_futures_metrics(symbol.upper().strip())
+    except ValueError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except Exception as error:
+        raise HTTPException(status_code=500, detail=f"Erro ao consultar futuro cripto: {error}") from error
+
+
 TIMEFRAME_MAP = {
     "M1": 1,
     "M5": 5,
     "M15": 15,
     "M30": 30,
     "H1": 16385,
+    "H2": 16386,
     "H4": 16388,
     "D1": 16408,
+    "W1": 32769,
 }
 
 

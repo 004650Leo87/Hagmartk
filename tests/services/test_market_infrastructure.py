@@ -125,8 +125,10 @@ def test_detailed_symbols_and_candles_infrastructure(monkeypatch):
     monkeypatch.setattr("backend.services.market_service.mt5", fake_mt5)
 
     service = MarketService()
-    # Mock connection to pass _ensure_connection
+    # Isolate this legacy MT5 infrastructure test from external providers.
     monkeypatch.setattr(service.mt5, "connect", lambda: True)
+    monkeypatch.setattr(service, "_ensure_binance_connection", lambda: None)
+    monkeypatch.setattr(service.binance_futures, "get_symbols", lambda: [])
 
     # 1. Test detailed_symbols
     detailed = service.detailed_symbols()

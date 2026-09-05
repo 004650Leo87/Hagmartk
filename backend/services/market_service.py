@@ -8,11 +8,29 @@ import pandas as pd
 from backend.core.constants import categorize_symbol
 from backend.indicators import EMAIndicator, RSIIndicator, SMAIndicator
 from backend.services.mt5_service import MT5Service
+from backend.engines.market.binance_usdm_futures_adapter import (
+    BinanceUSDMFuturesMarketAdapter,
+    PROVIDER_ID as BINANCE_USDM_PROVIDER,
+)
 
 
 class MarketService:
     def __init__(self) -> None:
         self.mt5 = MT5Service()
+        self.binance_futures = BinanceUSDMFuturesMarketAdapter()
+        self._binance_connected = False
+
+    def _ensure_binance_connection(self) -> None:
+        if not self._binance_connected:
+            self.binance_futures.connect()
+            self._binance_connected = True
+
+    def _is_binance_futures_symbol(self, symbol: str) -> bool:
+        try:
+            self._ensure_binance_connection()
+            return self.binance_futures.has_symbol(symbol)
+        except Exception:
+            return False
 
     def _ensure_connection(self) -> None:
         if not self.mt5.connect():
@@ -39,12 +57,23 @@ class MarketService:
         return symbols
 
     def symbol_names(self) -> list[str]:
-        symbols = self.symbols()
-
-        return [symbol.name for symbol in symbols]
+        names: list[str] = []
+        try:
+            names.extend(symbol.name for symbol in self.symbols())
+        except Exception:
+            pass
+        try:
+            self._ensure_binance_connection()
+            names.extend(item["symbol"] for item in self.binance_futures.get_symbols())
+        except Exception:
+            pass
+        return list(dict.fromkeys(names))
 
     def detailed_symbols(self) -> list[dict[str, Any]]:
-        raw_symbols = self.symbols()
+        try:
+            raw_symbols = self.symbols()
+        except Exception:
+            raw_symbols = []
 
         detailed: list[dict[str, Any]] = []
 
@@ -106,10 +135,49 @@ class MarketService:
                     "volume_step": volume_step,
                     "margin_initial": margin_initial,
                     "trade_contract_size": trade_contract_size,
+                    "provider": "MT5_TICKMILL",
+                    "market_type": "BROKER_MARKET",
+                    "instrument_id": f"MT5_TICKMILL:{name}",
+                    "read_only": True,
                 }
             )
 
+        try:
+            self._ensure_binance_connection()
+            existing = {item.get("symbol") for item in detailed}
+            detailed.extend(
+                item for item in self.binance_futures.get_symbols()
+                if item.get("symbol") not in existing
+            )
+        except Exception:
+            pass
+
         return detailed
+
+    def provider_status(self) -> dict[str, Any]:
+        mt5_status: dict[str, Any] = {"provider": "MT5_TICKMILL", "connected": False}
+        try:
+            self._ensure_connection()
+            mt5_status["connected"] = True
+            mt5_status["symbols"] = len(mt5.symbols_get() or [])
+        except Exception as exc:
+            mt5_status["error"] = type(exc).__name__
+
+        binance_status = self.binance_futures.get_connection_info()
+        try:
+            self._ensure_binance_connection()
+            binance_status = self.binance_futures.get_connection_info()
+            binance_status["symbols"] = len(self.binance_futures.get_symbols())
+        except Exception as exc:
+            binance_status["error"] = type(exc).__name__
+
+        return {"providers": [mt5_status, binance_status]}
+
+    def crypto_futures_metrics(self, symbol: str) -> dict[str, Any]:
+        self._ensure_binance_connection()
+        if not self.binance_futures.has_symbol(symbol):
+            raise ValueError(f"Futuro perpétuo não encontrado na Binance USD-M: {symbol}")
+        return self.binance_futures.get_mark_price(symbol)
 
     def supported_timeframes(self) -> list[dict[str, Any]]:
         self._ensure_connection()
@@ -133,10 +201,11 @@ class MarketService:
         ]
 
     def quote(self, symbol: str) -> dict[str, Any]:
-        self._ensure_connection()
-
         symbol = symbol.upper().strip()
+        if self._is_binance_futures_symbol(symbol):
+            return self.binance_futures.get_quote(symbol)
 
+        self._ensure_connection()
         symbol_info = mt5.symbol_info(symbol)
 
         if symbol_info is None:
@@ -188,6 +257,8 @@ class MarketService:
             "digits": int(symbol_info.digits),
             "point": point,
             "time": tick_time,
+            "provider": "MT5_TICKMILL",
+            "market_type": "BROKER_MARKET",
         }
 
     def quotes(self, symbols: list[str]) -> list[dict[str, Any]]:
@@ -213,8 +284,6 @@ class MarketService:
         bars: int = 500,
         offset: int = 0,
     ) -> pd.DataFrame:
-        self._ensure_connection()
-
         symbol = symbol.upper().strip()
 
         if bars <= 0:
@@ -222,6 +291,18 @@ class MarketService:
                 "A quantidade de candles deve ser maior que zero."
             )
 
+        if self._is_binance_futures_symbol(symbol):
+            requested = min(1500, int(bars) + int(offset))
+            rows = self.binance_futures.get_candles(symbol, timeframe, count=requested)
+            if offset:
+                rows = rows[:-int(offset)] if int(offset) < len(rows) else []
+            rows = rows[-int(bars):]
+            dataframe = pd.DataFrame(rows)
+            if not dataframe.empty:
+                dataframe["time"] = pd.to_datetime(dataframe["time"], utc=True)
+            return dataframe
+
+        self._ensure_connection()
         symbol_info = mt5.symbol_info(symbol)
 
         if symbol_info is None:
@@ -276,15 +357,41 @@ class MarketService:
         offset: int = 0,
     ) -> dict[str, Any]:
         """Retorna histórico de candles estruturado com metadados para a pesquisa do Strategy Lab."""
-        self._ensure_connection()
-
         symbol = symbol.upper().strip()
 
         if bars <= 0:
             raise ValueError("A quantidade de candles deve ser maior que zero.")
 
-        symbol_info = mt5.symbol_info(symbol)
+        if self._is_binance_futures_symbol(symbol):
+            requested = min(1500, int(bars) + int(offset))
+            rows = self.binance_futures.get_candles(symbol, timeframe, count=requested)
+            if offset:
+                rows = rows[:-int(offset)] if int(offset) < len(rows) else []
+            rows = rows[-int(bars):]
+            candle_list = []
+            for row in rows:
+                dt = pd.to_datetime(row["time"], utc=True)
+                candle_list.append({
+                    "time": int(dt.timestamp()), "datetime": dt.isoformat(),
+                    "open": float(row["open"]), "high": float(row["high"]),
+                    "low": float(row["low"]), "close": float(row["close"]),
+                    "tick_volume": int(row.get("tick_volume", 0)),
+                    "spread": float(row.get("spread", 0.0)),
+                    "real_volume": float(row.get("real_volume", 0.0)),
+                    "provider": BINANCE_USDM_PROVIDER,
+                })
+            return {
+                "symbol": symbol, "provider": BINANCE_USDM_PROVIDER,
+                "market_type": "PERPETUAL_FUTURES", "timeframe": timeframe,
+                "requested_bars": bars, "returned_bars": len(candle_list),
+                "offset": offset, "has_more": len(candle_list) >= bars,
+                "earliest_timestamp": candle_list[0]["datetime"] if candle_list else None,
+                "latest_timestamp": candle_list[-1]["datetime"] if candle_list else None,
+                "candles": candle_list,
+            }
 
+        self._ensure_connection()
+        symbol_info = mt5.symbol_info(symbol)
         if symbol_info is None:
             raise ValueError(f"O ativo '{symbol}' não foi encontrado no MetaTrader.")
 
@@ -412,8 +519,15 @@ class MarketService:
                 v = None if pd.isna(val) else round(float(val), 2)
                 indicators_result[f"rsi_{p}"].append({"time": ts, "value": v})
 
-        info = mt5.symbol_info(symbol) if hasattr(mt5, "symbol_info") else None
-        digits = int(getattr(info, "digits", 5)) if info else 5
+        if self._is_binance_futures_symbol(symbol):
+            meta = next(
+                (item for item in self.binance_futures.get_symbols() if item.get("symbol") == symbol.upper().strip()),
+                None,
+            )
+            digits = int(meta.get("digits", 5)) if meta else 5
+        else:
+            info = mt5.symbol_info(symbol) if hasattr(mt5, "symbol_info") else None
+            digits = int(getattr(info, "digits", 5)) if info else 5
 
         for p in ema_periods:
             ema_ind = EMAIndicator(period=p)
@@ -466,4 +580,4 @@ class MarketService:
             "offset": offset,
             "candles": candles_records,
             "indicators": aligned_indicators,
-        }
+        }

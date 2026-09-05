@@ -74,6 +74,16 @@ export async function getSystemHealth() {
   return apiRequest('/system/health');
 }
 
+export async function getMarketProviderStatus() {
+  return apiRequest('/market/providers/status');
+}
+
+export async function getCryptoFuturesMetrics(symbol) {
+  if (!symbol) throw new Error('O ativo cripto n?o foi informado.');
+  return apiRequest(`/market/crypto/futures/${encodeURIComponent(symbol)}/metrics`);
+}
+
+
 export async function getCandles(
   symbol,
   timeframe,

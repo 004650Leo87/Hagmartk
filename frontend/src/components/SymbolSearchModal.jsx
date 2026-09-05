@@ -47,7 +47,7 @@ export default function SymbolSearchModal({
           type="text"
           className="hk-search-input"
           style={{ width: '100%', padding: '10px 14px', fontSize: '13px' }}
-          placeholder="Digite o código ou descrição do ativo (ex: EURUSD, XAUUSD)..."
+          placeholder="Digite o código ou descrição (ex: EURUSD, XAUUSD, BTCUSDT)..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           autoFocus
@@ -55,7 +55,7 @@ export default function SymbolSearchModal({
 
         <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '360px', paddingRight: '4px' }}>
           {loading ? (
-            <div className="hk-empty">Carregando catálogo do MetaTrader 5...</div>
+            <div className="hk-empty">Carregando catálogo HAGMARTK (MT5 + Binance Futures)...</div>
           ) : filtered.length === 0 ? (
             <div className="hk-empty">Nenhum ativo encontrado para "{query}".</div>
           ) : (
@@ -74,7 +74,10 @@ export default function SymbolSearchModal({
                 >
                   <div className="hk-wl-col-symbol">
                     <strong className="hk-wl-symbol" style={{ fontSize: '14px' }}>{sym}</strong>
-                    <span className="hk-wl-spread">{item.description || item.category || 'FOREX'}</span>
+                    <span className="hk-wl-spread">
+                      {item.description || item.category || 'MERCADO'}
+                      {item.provider ? ` • ${item.provider === 'BINANCE_USDM_FUTURES' ? 'BINANCE FUTURES' : 'MT5'}` : ''}
+                    </span>
                   </div>
                   <button type="button" className="hk-action-sm-btn">
                     SELECIONAR 📊

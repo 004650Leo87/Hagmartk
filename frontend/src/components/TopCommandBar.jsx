@@ -23,8 +23,8 @@ export default function TopCommandBar({
   const FAVORITES = ['M5', 'M15', 'H1', 'H4'];
   const ALL_TIMEFRAMES = [
     { group: 'Minutos', items: ['M1', 'M5', 'M15', 'M30'] },
-    { group: 'Horas', items: ['H1', 'H4'] },
-    { group: 'Dias', items: ['D1'] },
+    { group: 'Horas', items: ['H1', 'H2', 'H4'] },
+    { group: 'Dias', items: ['D1', 'W1'] },
   ];
 
   const [showTfDropdown, setShowTfDropdown] = useState(false);

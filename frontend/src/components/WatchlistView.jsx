@@ -44,7 +44,7 @@ export default function WatchlistView({
       <div className="hk-view-header">
         <div>
           <h2 className="hk-view-title">CATÁLOGO DE ATIVOS & WATCHLIST</h2>
-          <p className="hk-view-subtitle">Explore os ativos disponíveis no MetaTrader 5 e monte sua lista de acompanhamento.</p>
+          <p className="hk-view-subtitle">MT5 + Binance USD-M Futures: forex, metais, índices e cripto perpétuo em um único catálogo.</p>
         </div>
 
         <div className="hk-search-bar">
@@ -75,7 +75,7 @@ export default function WatchlistView({
       {/* Catalog Table */}
       <div className="hk-table-card">
         {loading ? (
-          <div className="hk-loading">Carregando catálogo do MetaTrader 5...</div>
+          <div className="hk-loading">Carregando catálogo HAGMARTK (MT5 + Binance Futures)...</div>
         ) : filteredCatalog.length === 0 ? (
           <div className="hk-empty">Nenhum ativo encontrado para os filtros selecionados.</div>
         ) : (
@@ -85,8 +85,9 @@ export default function WatchlistView({
                 <th>FAV</th>
                 <th>SÍMBOLO</th>
                 <th>CATEGORIA</th>
+                <th>FONTE</th>
                 <th>DESCRIÇÃO</th>
-                <th>BROKER PATH</th>
+                <th>CAMINHO</th>
                 <th>AÇÕES</th>
               </tr>
             </thead>
@@ -94,7 +95,7 @@ export default function WatchlistView({
               {filteredCatalog.map((item) => {
                 const favorite = isFav(item.symbol);
                 return (
-                  <tr key={item.symbol}>
+                  <tr key={item.instrument_id || item.symbol}>
                     <td>
                       <button
                         type="button"
@@ -113,6 +114,7 @@ export default function WatchlistView({
                     <td>
                       <span className="hk-badge-category">{item.category || 'FOREX'}</span>
                     </td>
+                    <td className="hk-text-muted">{item.provider === 'BINANCE_USDM_FUTURES' ? 'BINANCE FUTURES' : 'MT5'}</td>
                     <td>{item.description || item.name || '--'}</td>
                     <td className="hk-text-muted">{item.broker_path || item.path || '--'}</td>
                     <td>
