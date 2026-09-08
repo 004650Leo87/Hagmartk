@@ -52,7 +52,14 @@ def _cycle_alerts(limit: int) -> List[Dict[str, Any]]:
         rows = CycleTheoryShadowStore().recent_events(limit)
     except Exception:
         return result
+    allowed = {
+        "EXPANSION_CONFIRMED", "ORDER_SUBMITTED", "LIMIT_FILLED", "POSITION_OPENED",
+        "PARTIAL_EXECUTED", "BREAKEVEN_APPLIED", "TARGET_LEVEL_REACHED",
+        "TAKE_PROFIT", "STOP_LOSS", "POSITION_CLOSED", "PULLBACK_MISSED",
+    }
     for row in rows:
+        if str(row.get("event_type") or "") not in allowed:
+            continue
         event = dict(row)
         event["payload"] = row.get("payload") or {}
         event["levels"] = row.get("levels") or {}
