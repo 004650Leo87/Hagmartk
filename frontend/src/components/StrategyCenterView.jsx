@@ -6,12 +6,14 @@ export default function StrategyCenterView() {
 
   useEffect(() => {
     let mounted = true;
-    getOrbStatus().then((data) => {
+    const loadOrb = () => getOrbStatus().then((data) => {
       if (mounted) setOrbStatus(data);
     }).catch(() => {
       if (mounted) setOrbStatus(null);
     });
-    return () => { mounted = false; };
+    loadOrb();
+    const iv = setInterval(loadOrb, 10000);
+    return () => { mounted = false; clearInterval(iv); };
   }, []);
 
   return (
@@ -144,12 +146,20 @@ export default function StrategyCenterView() {
             <strong>{orbStatus?.stage || 'VALIDATION'}</strong>
           </div>
           <div className="hk-param-row">
-            <span>Perfis de sessão:</span>
-            <strong>{orbStatus?.session_profiles_configured ?? 0}</strong>
+            <span>Ativos ORB elegíveis:</span>
+            <strong>{orbStatus?.eligible_instruments ?? orbStatus?.session_profiles_configured ?? 0}</strong>
           </div>
           <div className="hk-param-row">
-            <span>Status prospectivo:</span>
-            <strong>{orbStatus?.blocking_reason || 'EXPLICIT_SESSION_PROFILES_REQUIRED'}</strong>
+            <span>Shadow prospectivo:</span>
+            <strong>{orbStatus?.running ? 'ATIVO / PAPER' : (orbStatus?.blocking_reason || 'AGUARDANDO RUNTIME')}</strong>
+          </div>
+          <div className="hk-param-row">
+            <span>Eventos ORB registrados:</span>
+            <strong>{orbStatus?.events_total ?? 0}</strong>
+          </div>
+          <div className="hk-param-row">
+            <span>WebSocket Bid/Ask:</span>
+            <strong>{orbStatus?.book_ticker_capture?.running ? 'ONLINE' : 'AGUARDANDO'}</strong>
           </div>
           <div className="hk-param-row">
             <span>Config Hash:</span>

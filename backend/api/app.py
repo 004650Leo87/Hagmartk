@@ -6,6 +6,7 @@ from backend.api.shadow_routes import router as shadow_router
 from backend.api.registry_routes import router as registry_router
 from backend.api.event_routes import router as event_router
 from backend.api.orb_routes import router as orb_router
+from backend.api.alerts_routes import router as alerts_router
 
 from backend.bootstrap import create_system, start_system, shutdown_system
 import os
@@ -43,6 +44,7 @@ app.include_router(shadow_router)
 app.include_router(registry_router)
 app.include_router(event_router)
 app.include_router(orb_router)
+app.include_router(alerts_router)
 
 
 @app.get("/")

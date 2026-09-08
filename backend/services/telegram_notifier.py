@@ -9,6 +9,9 @@ from dataclasses import dataclass
 from typing import Any, Dict
 
 from backend.domain.shadow_models import ShadowEvent, ShadowEventType
+from backend.services.market_alert_template import (
+    build_cycle_alert, build_dvp_alert, build_orb_alert, format_telegram_alert,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -77,7 +80,7 @@ class TelegramNotifier:
 
     def _safe_send_event(self, event_type: ShadowEventType, event: ShadowEvent, details: Dict[str, Any]) -> None:
         try:
-            self._send_payload(self._format_event_message(event_type, event, details), event_type, event.event_id)
+            self._send_payload(format_telegram_alert(build_dvp_alert(event_type, event, details)), event_type, event.event_id)
         except Exception as exc:
             _logger.warning(
                 "[TELEGRAM] delivery failed event_id=%s type=%s error=%s",
@@ -102,7 +105,7 @@ class TelegramNotifier:
     def _safe_send_cycle(self, event: Dict[str, Any]) -> None:
         try:
             self._send_payload(
-                self._format_cycle_message(event),
+                format_telegram_alert(build_cycle_alert(event)),
                 str(event.get("event_type") or "CYCLE_EVENT"),
                 str(event.get("event_id") or "cycle_theory_event"),
                 source="HAGMARTK_CYCLE_THEORY_SHADOW",
@@ -112,6 +115,64 @@ class TelegramNotifier:
                 "[TELEGRAM] Cycle Theory delivery failed event_id=%s error=%s",
                 event.get("event_id"), type(exc).__name__,
             )
+
+    def notify_orb_async(self, event_type: str, event: Dict[str, Any]) -> bool:
+        if not self.status()["ready"]:
+            return False
+        event_id = str(event.get("signal_id") or event.get("session_id") or "orb_event")
+        thread = threading.Thread(
+            target=self._safe_send_orb,
+            args=(str(event_type), dict(event)),
+            daemon=True,
+            name=f"TelegramORB-{event_id}",
+        )
+        thread.start()
+        return True
+
+    def _safe_send_orb(self, event_type: str, event: Dict[str, Any]) -> None:
+        try:
+            self._send_payload(
+                format_telegram_alert(build_orb_alert(event_type, event)),
+                event_type,
+                str(event.get("signal_id") or event.get("session_id") or "orb_event"),
+                source="HAGMARTK_ORB_SHADOW",
+            )
+        except Exception as exc:
+            _logger.warning(
+                "[TELEGRAM] ORB delivery failed event=%s error=%s",
+                event_type, type(exc).__name__,
+            )
+
+    @classmethod
+    def _format_orb_message(cls, event_type: str, event: Dict[str, Any]) -> str:
+        labels = {
+            "SIGNAL": "SINAL ORB CONFIRMADO",
+            "ENTRY_FILLED": "ENTRADA PAPER ATIVADA",
+            "ENTRY_REJECTED": "ENTRADA PAPER REJEITADA",
+            "EXIT_FILLED": "OPERACAO PAPER ENCERRADA",
+        }
+        direction = str(event.get("direction") or "-").upper()
+        lines = [
+            "<b>HAGMARTK SHADOW - ORB</b>",
+            "------------------",
+            f"<b>{cls._esc(labels.get(event_type, event_type))}</b>",
+            f"Ativo: <b>{cls._esc(event.get('symbol'))}</b>",
+            f"Direcao: <b>{cls._esc(direction)}</b>",
+        ]
+        for label, key in (("H_OR", "H_OR"), ("L_OR", "L_OR"), ("Entrada", "entry"), ("Stop", "stop"), ("Alvo 2R", "target")):
+            if event.get(key) not in (None, ""):
+                lines.append(f"{label}: <code>{cls._esc(event.get(key))}</code>")
+        if event.get("exit_reason"):
+            lines.append(f"Saida: <b>{cls._esc(event.get('exit_reason'))}</b>")
+        if event.get("r_multiple") not in (None, ""):
+            lines.append(f"Resultado: <b>{cls._esc(event.get('r_multiple'))}R</b>")
+        if event.get("reason"):
+            lines.append(f"Motivo: {cls._esc(event.get('reason'))}")
+        lines.extend([
+            "Modo: <b>SHADOW / PAPER</b>",
+            "Ordem real: <b>NAO</b>",
+        ])
+        return "\n".join(lines)
 
     def send_test_async(self) -> bool:
         if not self.status()["ready"]:
@@ -133,31 +194,20 @@ class TelegramNotifier:
     @staticmethod
     def _format_test_message() -> str:
         return (
-            "🧪 <b>PRÉVIA DE TEMPLATE — NÃO É EVENTO DE MERCADO</b>\n\n"
-            "📡 <b>HAGMARTK SHADOW • DVP</b>\n"
-            "━━━━━━━━━━━━━━━━━━\n\n"
-            "🟡 <b>CONFIGURAÇÃO ARMADA</b>\n"
-            "Possível oportunidade de compra detectada pelo motor.\n\n"
-            "📈 <b>MERCADO</b>\n"
-            "Ativo: <b>EURUSD</b>\n"
-            "Tempo gráfico: <b>M15</b>\n"
-            "Direção: <b>▲ COMPRA</b>\n\n"
-            "🎯 <b>NÍVEIS OPERACIONAIS</b>\n"
-            "Ativação: <code>1.10100</code>\n"
-            "Stop estrutural: <code>1.09500</code>\n"
-            "Alvo 2R: <code>1.11300</code>\n\n"
-            "🧠 <b>CONFLUÊNCIAS DVP</b>\n"
-            "✓ Divergência RSI confirmada\n"
-            "✓ Volume relativo: <b>1.42x</b>\n"
-            "✓ Padrão: <b>Engolfo altista</b>\n\n"
-            "🕯 <b>GATILHO VISUAL</b>\n"
-            "Candle de compra: <b>BRANCO</b>\n"
-            "A imagem técnica será anexada aos eventos quando o renderer estiver ativo.\n\n"
-            "🛡 <b>CONTROLE OPERACIONAL</b>\n"
-            "Modo: <b>SHADOW / PAPER</b>\n"
-            "Ordem real: <b>NÃO</b>\n\n"
-            "🕒 <b>REGISTRO</b>\n"
-            "Evento demonstrativo para validação visual do Telegram."
+            "🧪 <b>PRÉVIA DO NOVO PADRÃO — NÃO É EVENTO DE MERCADO</b>\n\n"
+            "🟢 <b>HAGMARTK DVP</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "<b>OPERAÇÃO REGISTRADA</b>\n\n"
+            "📌 <b>Ativo:</b> EURUSD\n"
+            "🕒 <b>Horário (Brasília):</b> 08/09/2026 • 16:05:00\n"
+            "🟢 <b>Direção:</b> COMPRA\n"
+            "⏱️ <b>Gráfico:</b> M5\n\n"
+            "🎯 <b>Níveis da operação</b>\n"
+            "Entrada: <code>1.10100</code>\n"
+            "🛑 Stop: <code>1.09500</code>\n"
+            "🎯 Alvo 2R: <code>1.11300</code>\n\n"
+            "🧪 <b>Acompanhamento:</b> Shadow / Simulação\n"
+            "🔒 Nenhuma ordem real foi enviada."
         )
 
     @staticmethod

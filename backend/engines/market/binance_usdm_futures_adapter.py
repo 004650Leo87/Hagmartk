@@ -215,6 +215,37 @@ class BinanceUSDMFuturesMarketAdapter(MarketAdapter):
             raise AdapterError(f"Invalid Binance USD-M candle payload for {symbol}")
         return candles
 
+    def get_funding_rates(self, symbol: str, from_time: datetime, to_time: datetime) -> List[Dict[str, Any]]:
+        symbol = symbol.upper().strip()
+        if from_time.tzinfo is None or to_time.tzinfo is None:
+            raise ValueError("funding range must be timezone-aware")
+        if to_time <= from_time:
+            return []
+        payload = self._request_json(
+            "/fapi/v1/fundingRate",
+            {
+                "symbol": symbol,
+                "startTime": int(from_time.astimezone(timezone.utc).timestamp() * 1000),
+                "endTime": int(to_time.astimezone(timezone.utc).timestamp() * 1000),
+                "limit": 1000,
+            },
+        )
+        if not isinstance(payload, list):
+            raise AdapterError("Binance USD-M fundingRate returned invalid payload")
+        result: List[Dict[str, Any]] = []
+        for row in payload:
+            if not isinstance(row, dict):
+                continue
+            event_ms = int(row.get("fundingTime") or 0)
+            result.append({
+                "symbol": symbol,
+                "funding_time": datetime.fromtimestamp(event_ms / 1000, tz=timezone.utc).isoformat(),
+                "funding_rate": float(row.get("fundingRate") or 0.0),
+                "mark_price": float(row.get("markPrice") or 0.0),
+                "provider": PROVIDER_ID,
+            })
+        return result
+
     def get_mark_price(self, symbol: str) -> Dict[str, Any]:
         symbol = symbol.upper().strip()
         payload = self._request_json("/fapi/v1/premiumIndex", {"symbol": symbol})

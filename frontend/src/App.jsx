@@ -12,6 +12,7 @@ import BacktestView from './components/BacktestView';
 import AiInsightsView from './components/AiInsightsView';
 import AutomationSafetyView from './components/AutomationSafetyView';
 import AlertCenterDrawer from './components/AlertCenterDrawer';
+import MarketAlertsSection from './components/MarketAlertsSection';
 import HdfToastStack from './components/HdfToastStack';
 import SymbolSearchModal from './components/SymbolSearchModal';
 import IndicatorManagerModal from './components/IndicatorManagerModal';
@@ -20,6 +21,7 @@ import {
   getShadowRecentEvents,
   getHDFRecentEvidences,
   getShadowScanners,
+  getRecentMarketAlerts,
   getSystemHealth,
   getWatchlist,
   addToWatchlist,
@@ -97,6 +99,7 @@ export default function App() {
   const [activeEvidence, setActiveEvidence] = useState(null);
   const [operationalCount, setOperationalCount] = useState(0);
   const [scannerTotalCount, setScannerTotalCount] = useState(104);
+  const [marketAlertCount, setMarketAlertCount] = useState(0);
 
   // Theme State ('black-piano' | 'flight-deck-light')
   const [theme, setTheme] = useState(() => localStorage.getItem('hk_theme') || 'black-piano');
@@ -158,6 +161,13 @@ export default function App() {
         }
       } catch (err) {
         console.error('Erro ao carregar scanners Shadow:', err);
+      }
+
+      try {
+        const allMarketAlerts = await getRecentMarketAlerts(60, 'ALL');
+        setMarketAlertCount(allMarketAlerts?.count || 0);
+      } catch (err) {
+        console.error('Erro ao carregar ocorrências HAGMARTK:', err);
       }
 
       try {
@@ -275,7 +285,7 @@ export default function App() {
             showRSI={showRSI}
             onToggleRSI={() => setShowRSI((prev) => !prev)}
             onToggleAlerts={() => setIsAlertsOpen(true)}
-            alertCount={shadowEvents.length + hdfEvidences.filter((ev) => ev.variant_stage === 'HDF_DVP').length}
+            alertCount={marketAlertCount}
             systemStatus={systemStatus}
             systemHealth={systemHealth}
             theme={theme}
@@ -376,7 +386,11 @@ export default function App() {
             {activeTab === 'alerts' && (
               <div className="hk-page-view">
                 <ErrorBoundary name="ALERTS CENTER">
-                  <ShadowStrategiesView />
+                  <MarketAlertsSection onSelectAlert={(alert) => {
+                    if (alert.symbol) setSymbol(alert.symbol);
+                    if (alert.timeframe && alert.timeframe !== '—') setTimeframe(alert.timeframe);
+                    setActiveTab('chart');
+                  }} />
                 </ErrorBoundary>
               </div>
             )}
@@ -465,15 +479,10 @@ export default function App() {
         <AlertCenterDrawer
           isOpen={isAlertsOpen}
           onClose={() => setIsAlertsOpen(false)}
-          events={shadowEvents}
-          evidences={hdfEvidences}
-          selectedEventId={activeEvidence?.evidence_id || activeEvidence?.event_id || activeEvidence?.id}
           onSelectEvent={(evt) => {
             if (evt.symbol) setSymbol(evt.symbol);
-            if (evt.timeframe) setTimeframe(evt.timeframe);
-            setActiveEvidence(evt);
-            setContextMode('evidence');
-            setIsContextOpen(true);
+            if (evt.timeframe && evt.timeframe !== '—') setTimeframe(evt.timeframe);
+            setIsAlertsOpen(false);
             setActiveTab('chart');
           }}
         />

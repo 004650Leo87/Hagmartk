@@ -48,13 +48,15 @@ def test_cycle_theory_contract_is_shadow_gated_and_never_real_order():
     assert cycle.real_order_execution_allowed is False
 
 
-def test_orb_contract_is_validation_only_and_never_real_order():
+def test_orb_contract_is_shadow_gated_and_never_real_order():
     orb = build_product_strategy_registry().get("ORB_OPENING_RANGE_15M_5M_2R", "1.0.0")
     assert orb is not None
     assert orb.display_name == "ORB"
-    assert orb.stage == ProductStrategyStage.VALIDATION
+    assert orb.stage == ProductStrategyStage.SHADOW
     assert len(orb.parameter_hash) == 64
-    assert orb.publication_capability == PublicationCapability.NONE
+    assert orb.publication_capability == PublicationCapability.GATED
+    assert MarketEventClass.QUANT_EVENT in orb.allowed_event_classes
+    assert "ORB_V1_SHADOW_EVIDENCE" in orb.evidence_keys
     assert orb.real_order_execution_allowed is False
 
 

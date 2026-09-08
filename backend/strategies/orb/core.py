@@ -262,11 +262,20 @@ def size_linear_entry(signal: Signal, quote: Quote, session: SessionWindow, open
         stop_fill = stop + Decimal(profile.slippage_stop_ticks) * delta
     budget = config.risk_fraction * profile.allocated_equity
     per_unit_loss = abs(linear_profit(signal.direction, Decimal("1"), entry_model, stop_fill, profile.point_value))
+    if profile.fee_rate_entry > 0 or profile.fee_rate_exit_stop > 0:
+        per_unit_loss += (
+            abs(entry_model) * profile.point_value * profile.fee_rate_entry
+            + abs(stop_fill) * profile.point_value * profile.fee_rate_exit_stop
+        )
     per_unit_loss += profile.fees_roundtrip_per_unit
     if per_unit_loss <= 0:
         raise ValueError("INVALID_CONFIG: estimated loss per unit must be positive")
     q_risk = budget / per_unit_loss
-    q_margin = profile.margin_available / profile.margin_per_unit if profile.margin_per_unit > 0 else profile.quantity_max
+    if profile.paper_leverage > 0:
+        margin_per_unit = abs(entry_model) * profile.point_value / profile.paper_leverage
+    else:
+        margin_per_unit = profile.margin_per_unit
+    q_margin = profile.margin_available / margin_per_unit if margin_per_unit > 0 else profile.quantity_max
     q = _floor_quantity(min(q_risk, q_margin), profile.quantity_min, profile.quantity_max, profile.quantity_step)
     if q <= 0:
         raise ValueError("MIN_SIZE_EXCEEDS_RISK")

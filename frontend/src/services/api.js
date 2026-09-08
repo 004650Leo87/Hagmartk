@@ -201,6 +201,10 @@ export async function getOrbConfig() {
   return apiRequest('/api/orb/config');
 }
 
+export async function getRecentMarketAlerts(limit = 30, strategy = 'ALL') {
+  return apiRequest(`/api/alerts/recent?limit=${limit}&strategy=${encodeURIComponent(strategy)}`);
+}
+
 export async function getShadowCandidates() {
   return apiRequest('/api/shadow/candidates');
 }

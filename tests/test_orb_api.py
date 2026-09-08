@@ -6,10 +6,10 @@ from backend.strategies.orb.config import ORB_V1_CONFIG_HASH
 client = TestClient(app)
 
 
-def test_orb_status_is_validation_paper_only():
+def test_orb_status_is_shadow_paper_only():
     payload = client.get("/api/orb/status").json()
     assert payload["display_name"] == "ORB"
-    assert payload["stage"] == "VALIDATION"
+    assert payload["stage"] == "SHADOW"
     assert payload["config_hash"] == ORB_V1_CONFIG_HASH
     assert payload["engine_core_ready"] is True
     assert payload["prospective_shadow_enabled"] is False

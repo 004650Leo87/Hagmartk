@@ -5,9 +5,10 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from backend.strategies.orb.config import DEFAULT_ORB_CONFIG, ORB_V1_CONFIG_HASH
+from backend.services.orb_shadow_store import OrbShadowStore
 
 router = APIRouter(prefix="/api/orb", tags=["ORB"])
 
@@ -35,7 +36,11 @@ def _profile_summary(row: Dict[str, Any]) -> Dict[str, Any]:
 
 
 @router.get("/status")
-def get_orb_status() -> Dict[str, Any]:
+def get_orb_status(request: Request) -> Dict[str, Any]:
+    system = getattr(request.app.state, "system", None) or {}
+    scanner = system.get("orb_scanner") if isinstance(system, dict) else None
+    if scanner is not None and hasattr(scanner, "status"):
+        return scanner.status()
     profiles = _load_profiles()
     active = [row for row in profiles if row.get("active", True)]
     blocked = len(active) == 0
@@ -43,7 +48,7 @@ def get_orb_status() -> Dict[str, Any]:
         "strategy_id": DEFAULT_ORB_CONFIG.strategy_id,
         "version": DEFAULT_ORB_CONFIG.strategy_version,
         "display_name": "ORB",
-        "stage": "VALIDATION",
+        "stage": "SHADOW",
         "config_hash": ORB_V1_CONFIG_HASH,
         "engine_core_ready": True,
         "conformance_suite": "tests/strategies/test_orb_v1_core.py",
@@ -89,3 +94,16 @@ def get_orb_tradingview() -> Dict[str, Any]:
         "canonical_execution_ledger": "HAGMARTK",
         "real_order_execution_enabled": False,
     }
+
+
+@router.get("/shadow/events")
+def get_orb_shadow_events(limit: int = 100) -> Dict[str, Any]:
+    store = OrbShadowStore()
+    rows = store.recent_events(limit=limit)
+    return {"count": len(rows), "events": rows, "paper_only": True, "real_order_execution_enabled": False}
+
+
+@router.get("/shadow/statistics")
+def get_orb_shadow_statistics() -> Dict[str, Any]:
+    store = OrbShadowStore()
+    return store.statistics()

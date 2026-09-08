@@ -88,6 +88,12 @@ class InstrumentProfile:
     holidays: Tuple[date, ...] = ()
     early_closes: Dict[date, time] = field(default_factory=dict)
     session_fold: Optional[int] = None
+    fee_rate_entry: Decimal = Decimal("0")
+    fee_rate_exit_stop: Decimal = Decimal("0")
+    fee_rate_exit_target: Decimal = Decimal("0")
+    fee_rate_exit_time: Decimal = Decimal("0")
+    paper_leverage: Decimal = Decimal("0")
+    cost_model: str = ""
 
 
 @dataclass(frozen=True)

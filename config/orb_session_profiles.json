@@ -1,6 +1,74 @@
 {
-  "strategy_id": "ORB_OPENING_RANGE_15M_5M_2R",
-  "version": "1.0.0",
-  "policy": "EXPLICIT_ONLY_NO_UNIVERSAL_OPEN_ASSUMPTION",
-  "profiles": []
+  "policy_id": "HAGMARTK_ORB_SESSION_POLICY_V1",
+  "policy_version": "1.0.0",
+  "profiles": [],
+  "templates": [
+    {
+      "profile_id": "BINANCE_USDM_PERPETUAL_UTC_DAILY_V1",
+      "active": true,
+      "provider": "BINANCE_USDM_FUTURES",
+      "market": "CRYPTO",
+      "contract_type": "PERPETUAL",
+      "session_timezone": "UTC",
+      "session_start_local": "00:00:00",
+      "session_end_local": "23:59:59",
+      "trading_weekdays": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "source_price": "LAST",
+      "execution_mode": "TICK_BID_ASK",
+      "data_resolution": "BINANCE_M5_KLINE_LAST + FSTREAM_ALL_BOOK_TICKER_EVENT_SEQUENCE",
+      "contract_model": "LINEAR",
+      "grid_origin": "0",
+      "paper_allocated_equity": "10000",
+      "paper_leverage": "1",
+      "slippage_entry_ticks": 1,
+      "slippage_stop_ticks": 1,
+      "slippage_time_ticks": 1,
+      "fee_model_as_of": "2026-09-08",
+      "fee_rates": {
+        "USDT": {
+          "maker": "0.0002",
+          "taker": "0.0005"
+        },
+        "USDC": {
+          "maker": "0.0000",
+          "taker": "0.0004"
+        },
+        "USD1": {
+          "maker": "0.0000",
+          "taker": "0.0004"
+        },
+        "U": {
+          "maker": "0.0000",
+          "taker": "0.0004"
+        },
+        "BTC": {
+          "maker": "0.0002",
+          "taker": "0.0005"
+        }
+      },
+      "cost_model": "REFERENCE_FEE_TIER + OBSERVED_BID_ASK + 1_TICK_MODELLED_SLIPPAGE + REALIZED_PUBLIC_FUNDING_HISTORY",
+      "funding_policy": "MODEL_REALIZED_PUBLIC_FUNDING_HISTORY; ESTIMATE_ABS_CURRENT_RATE_FOR_SIZING_IF_WINDOW_CROSSES",
+      "reference_open_policy": "EXPLICIT_DAILY_00_00_UTC_RESEARCH_REFERENCE",
+      "notes": [
+        "00:00 UTC is an explicit HAGMARTK ORB research session reference for 24/7 crypto; it is not asserted to be a universal market open.",
+        "Paper equity is a simulation convention and is not the user's broker/account equity.",
+        "Fees are reference regular-user rates and must not be represented as the user's authenticated fee tier."
+      ],
+      "paper_equity_by_settle": {
+        "USDT": "10000",
+        "USDC": "10000",
+        "USD1": "10000",
+        "U": "10000",
+        "BTC": "1"
+      }
+    }
+  ]
 }

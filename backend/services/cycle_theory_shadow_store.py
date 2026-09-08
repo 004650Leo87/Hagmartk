@@ -72,7 +72,7 @@ class CycleTheoryShadowStore:
                     (event["event_id"], event["candidate_id"], event["parameter_hash"],
                      event["symbol"], event["market"], event["timeframe"], event["event_type"],
                      event["direction"], event["event_time"],
-                     json.dumps(event["payload"], ensure_ascii=False, sort_keys=True, default=str), _utc_now()),
+                     json.dumps({"payload": event.get("payload") or {}, "levels": event.get("levels") or {}}, ensure_ascii=False, sort_keys=True, default=str), _utc_now()),
                 )
                 conn.commit()
                 return True
@@ -115,6 +115,26 @@ class CycleTheoryShadowStore:
                 "SELECT snapshot_json FROM cycle_theory_shadow_runtime WHERE symbol=?", (symbol,)
             ).fetchone()
         return json.loads(row["snapshot_json"]) if row else None
+
+    def recent_events(self, limit: int = 100) -> list[dict[str, Any]]:
+        limit = max(1, min(int(limit), 1000))
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT * FROM cycle_theory_shadow_events ORDER BY event_time DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        result = []
+        for row in rows:
+            item = dict(row)
+            raw = json.loads(item.pop("payload_json") or "{}")
+            if isinstance(raw, dict) and ("payload" in raw or "levels" in raw):
+                item["payload"] = raw.get("payload") or {}
+                item["levels"] = raw.get("levels") or {}
+            else:
+                item["payload"] = raw if isinstance(raw, dict) else {}
+                item["levels"] = {}
+            result.append(item)
+        return result
 
     def summary(self) -> dict[str, Any]:
         with self._conn() as conn:

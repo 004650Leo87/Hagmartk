@@ -19,7 +19,7 @@ def test_strategy_registry_api_exposes_only_product_contracts():
     assert by_id["cycle_theory_v111_fidelity"]["candidate_id"] == "cycle_theory_v111_baseline"
     assert len(by_id["cycle_theory_v111_fidelity"]["parameter_hash"]) == 64
     assert by_id["ORB_OPENING_RANGE_15M_5M_2R"]["display_name"] == "ORB"
-    assert by_id["ORB_OPENING_RANGE_15M_5M_2R"]["stage"] == "VALIDATION"
+    assert by_id["ORB_OPENING_RANGE_15M_5M_2R"]["stage"] == "SHADOW"
     assert by_id["ORB_OPENING_RANGE_15M_5M_2R"]["real_order_execution_allowed"] is False
 
 
@@ -27,7 +27,7 @@ def test_evidence_registry_api_exposes_declared_contracts():
     response = client.get("/api/registry/evidence")
     assert response.status_code == 200
     payload = response.json()
-    assert payload["total"] == 5
+    assert payload["total"] == 6
     keys = {item["evidence_key"] for item in payload["evidence"]}
     assert keys == {
         "HDF_SHADOW_EVIDENCE_V1",
@@ -35,6 +35,7 @@ def test_evidence_registry_api_exposes_declared_contracts():
         "CYCLE_THEORY_V111_FIDELITY_EVIDENCE",
         "CYCLE_THEORY_V111_SHADOW_EVIDENCE",
         "ORB_V1_CONFORMANCE_EVIDENCE",
+        "ORB_V1_SHADOW_EVIDENCE",
     }
 
 

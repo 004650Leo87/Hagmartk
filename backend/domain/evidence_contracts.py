@@ -185,7 +185,31 @@ def build_product_evidence_registry() -> EvidenceContractRegistry:
             can_support_quant_event=False,
             publication_gate_required=True,
             audit_retained=True,
-            limitations=("No prospective session profile means no live Shadow promotion yet.",),
+            limitations=("Conformance evidence alone does not establish profitability or broker-fill parity.",),
+        )
+    )
+    registry.register(
+        EvidenceContract(
+            evidence_key="ORB_V1_SHADOW_EVIDENCE",
+            strategy_id=DEFAULT_ORB_CONFIG.strategy_id,
+            strategy_version=DEFAULT_ORB_CONFIG.strategy_version,
+            display_name="ORB V1 Prospective Shadow Evidence",
+            owner_module="backend.services.orb_shadow",
+            provenance=EvidenceProvenance.SHADOW,
+            storage_kind="SQLITE_TABLES",
+            storage_ref="orb_shadow_sessions + orb_shadow_events",
+            purpose="Prospective ORB signals, PAPER entries/exits, costs and immutable event linkage.",
+            mutation_contract="SESSION_STATE_EVOLVES_EVENTS_APPEND_ONLY",
+            research_only=False,
+            can_support_quant_event=True,
+            publication_gate_required=True,
+            live_filter="runtime=LIVE_PROSPECTIVE AND paper_only=1",
+            audit_retained=True,
+            limitations=(
+                "Binance 00:00 UTC is an explicit research session reference, not a universal market-open claim.",
+                "Bid/Ask is observed prospectively; fills, slippage and fee tier remain PAPER/modelled where declared.",
+                "Real broker orders are forbidden.",
+            ),
         )
     )
     return registry

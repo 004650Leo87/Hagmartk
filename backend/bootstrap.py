@@ -97,6 +97,12 @@ def start_system(system: Dict) -> None:
             cycle_scanner = system.get("cycle_theory_scanner") or CycleTheoryProspectiveScanner()
             system["cycle_theory_scanner"] = cycle_scanner
             cycle_scanner.start(adapter=market_engine.adapter, interval_seconds=3.0)
+
+        if os.environ.get("HAGMARTK_ORB_SHADOW", "0").strip().lower() in {"1", "true", "yes", "on"}:
+            from backend.services.orb_shadow import OrbProspectiveScanner
+            orb_scanner = system.get("orb_scanner") or OrbProspectiveScanner()
+            system["orb_scanner"] = orb_scanner
+            orb_scanner.start(adapter=market_engine.adapter, interval_seconds=1.0)
     except Exception as error:
         logger.error("Failed to start system: %s", error)
         raise
@@ -115,6 +121,13 @@ def shutdown_system(system: Dict) -> None:
     if cycle_scanner is not None and hasattr(cycle_scanner, "stop"):
         try:
             cycle_scanner.stop()
+        except Exception:
+            pass
+
+    orb_scanner = system.get("orb_scanner")
+    if orb_scanner is not None and hasattr(orb_scanner, "stop"):
+        try:
+            orb_scanner.stop()
         except Exception:
             pass
 
