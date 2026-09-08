@@ -21,6 +21,7 @@ def test_product_registry_contains_only_real_product_contracts():
     assert ids == {
         ("hagmartk_divergence_flow", "1.0.0"),
         ("cycle_theory_v111_fidelity", "111.00"),
+        ("ORB_OPENING_RANGE_15M_5M_2R", "1.0.0"),
     }
     assert all("BENCHMARK" not in item.strategy_id for item in contracts)
 
@@ -45,6 +46,16 @@ def test_cycle_theory_contract_is_shadow_gated_and_never_real_order():
     assert cycle.publication_capability == PublicationCapability.GATED
     assert MarketEventClass.QUANT_EVENT in cycle.allowed_event_classes
     assert cycle.real_order_execution_allowed is False
+
+
+def test_orb_contract_is_validation_only_and_never_real_order():
+    orb = build_product_strategy_registry().get("ORB_OPENING_RANGE_15M_5M_2R", "1.0.0")
+    assert orb is not None
+    assert orb.display_name == "ORB"
+    assert orb.stage == ProductStrategyStage.VALIDATION
+    assert len(orb.parameter_hash) == 64
+    assert orb.publication_capability == PublicationCapability.NONE
+    assert orb.real_order_execution_allowed is False
 
 
 def test_registry_rejects_duplicate_contract():

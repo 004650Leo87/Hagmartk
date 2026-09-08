@@ -6,6 +6,7 @@ from typing import Dict, Optional, Tuple
 
 from backend.domain.candidate import HDF_CANDIDATE_V1_PARAMETER_HASH, HDF_ROBUST_CANDIDATE_V1
 from backend.domain.market_events import MarketEventClass
+from backend.strategies.orb.config import DEFAULT_ORB_CONFIG, ORB_V1_CONFIG_HASH
 from backend.strategies.cycle_theory.validation_candidate import (
     CYCLE_THEORY_V111_BASELINE,
     CYCLE_THEORY_V111_BASELINE_HASH,
@@ -156,6 +157,29 @@ def build_product_strategy_registry() -> StrategyContractRegistry:
         ),
     )
     registry.register(cycle_v111)
+
+    orb_v1 = StrategyContract(
+        strategy_id=DEFAULT_ORB_CONFIG.strategy_id,
+        version=DEFAULT_ORB_CONFIG.strategy_version,
+        display_name="ORB",
+        family="OPENING_RANGE_BREAKOUT",
+        stage=ProductStrategyStage.VALIDATION,
+        source_of_truth="backend/strategies/orb + frozen ORB v1.0.0 contract",
+        owner_module="backend.strategies.orb",
+        candidate_id="orb_opening_range_15m_5m_2r_v1",
+        parameter_hash=ORB_V1_CONFIG_HASH,
+        publication_capability=PublicationCapability.NONE,
+        allowed_event_classes=(MarketEventClass.RESEARCH_UPDATE,),
+        evidence_keys=("ORB_V1_CONFORMANCE_EVIDENCE",),
+        real_order_execution_allowed=False,
+        limitations=(
+            "Frozen v1 signal/risk rules; no parameter optimization is authorized.",
+            "Prospective Shadow remains blocked until explicit instrument/session profiles exist.",
+            "TradingView ORB is a signal-conformance surface; HAGMARTK remains the canonical execution ledger.",
+            "Real broker orders are forbidden.",
+        ),
+    )
+    registry.register(orb_v1)
     return registry
 
 

@@ -193,6 +193,14 @@ export async function getShadowStatus() {
   return apiRequest('/api/shadow/status');
 }
 
+export async function getOrbStatus() {
+  return apiRequest('/api/orb/status');
+}
+
+export async function getOrbConfig() {
+  return apiRequest('/api/orb/config');
+}
+
 export async function getShadowCandidates() {
   return apiRequest('/api/shadow/candidates');
 }

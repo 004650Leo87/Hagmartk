@@ -5,6 +5,7 @@ from typing import Dict, Optional, Tuple
 
 from backend.domain.market_events import EvidenceProvenance
 from backend.domain.strategy_contracts import StrategyContractRegistry, build_product_strategy_registry
+from backend.strategies.orb.config import DEFAULT_ORB_CONFIG
 
 
 @dataclass(frozen=True)
@@ -166,6 +167,25 @@ def build_product_evidence_registry() -> EvidenceContractRegistry:
                 "Real broker orders are forbidden.",
                 "Target probabilities are not published until calibrated prospectively.",
             ),
+        )
+    )
+    registry.register(
+        EvidenceContract(
+            evidence_key="ORB_V1_CONFORMANCE_EVIDENCE",
+            strategy_id=DEFAULT_ORB_CONFIG.strategy_id,
+            strategy_version=DEFAULT_ORB_CONFIG.strategy_version,
+            display_name="ORB V1 Deterministic Conformance Evidence",
+            owner_module="backend.strategies.orb",
+            provenance=EvidenceProvenance.RESEARCH,
+            storage_kind="GIT_TESTS_AND_REFERENCE_LEDGER",
+            storage_ref="tests/strategies/test_orb_v1_core.py + backend/strategies/orb",
+            purpose="Deterministic signal, risk, execution-model and statistics conformance for frozen ORB v1.",
+            mutation_contract="APPEND_VERSIONED_GIT_EVIDENCE",
+            research_only=True,
+            can_support_quant_event=False,
+            publication_gate_required=True,
+            audit_retained=True,
+            limitations=("No prospective session profile means no live Shadow promotion yet.",),
         )
     )
     return registry

@@ -1,0 +1,67 @@
+//@version=6
+indicator("ORB", shorttitle="ORB", overlay=true, max_labels_count=500)
+
+// HAGMARTK ORB_OPENING_RANGE_15M_5M_2R v1.0.0
+// TradingView role: SIGNAL_CONFORMANCE / visual evidence only.
+// Economic fills, 5-second entry TTL, broker constraints and canonical PnL remain engine-side.
+
+string sessionInput = input.session("0930-1130", "Reference session (>=120m)")
+string timezoneInput = input.string("Etc/UTC", "IANA time zone")
+bool showRange = input.bool(true, "Show frozen opening range")
+bool showSignalLabels = input.bool(true, "Show first signal")
+
+bool validTf = timeframe.isminutes and timeframe.multiplier == 5
+bool inSession = validTf and not na(time(timeframe.period, sessionInput, timezoneInput))
+bool sessionStart = inSession and not inSession[1]
+
+var int sessionBar = na
+var float rangeHigh = na
+var float rangeLow = na
+var bool rangeFrozen = false
+var bool opportunityConsumed = false
+
+if sessionStart
+    sessionBar := 0
+    rangeHigh := high
+    rangeLow := low
+    rangeFrozen := false
+    opportunityConsumed := false
+else if inSession
+    sessionBar += 1
+else
+    sessionBar := na
+
+if inSession and sessionBar >= 0 and sessionBar <= 2
+    rangeHigh := na(rangeHigh) ? high : math.max(rangeHigh, high)
+    rangeLow := na(rangeLow) ? low : math.min(rangeLow, low)
+    if sessionBar == 2 and barstate.isconfirmed
+        rangeFrozen := (rangeHigh - rangeLow) >= syminfo.mintick
+
+bool eligible = inSession and rangeFrozen and barstate.isconfirmed and sessionBar >= 3 and sessionBar <= 10
+bool longSignal = eligible and not opportunityConsumed and close >= rangeHigh + syminfo.mintick
+bool shortSignal = eligible and not opportunityConsumed and close <= rangeLow - syminfo.mintick
+
+if longSignal or shortSignal
+    opportunityConsumed := true
+
+float stopLong = rangeLow - syminfo.mintick
+float stopShort = rangeHigh + syminfo.mintick
+
+plot(showRange and rangeFrozen ? rangeHigh : na, "H_OR", color=color.new(color.lime, 0), linewidth=2, style=plot.style_linebr)
+plot(showRange and rangeFrozen ? rangeLow : na, "L_OR", color=color.new(color.red, 0), linewidth=2, style=plot.style_linebr)
+plot(showRange and rangeFrozen ? stopLong : na, "S_LONG", color=color.new(color.red, 55), linewidth=1, style=plot.style_linebr)
+plot(showRange and rangeFrozen ? stopShort : na, "S_SHORT", color=color.new(color.red, 55), linewidth=1, style=plot.style_linebr)
+
+plotshape(showSignalLabels and longSignal, title="ORB LONG", text="ORB LONG", style=shape.labelup, location=location.belowbar, size=size.tiny)
+plotshape(showSignalLabels and shortSignal, title="ORB SHORT", text="ORB SHORT", style=shape.labeldown, location=location.abovebar, size=size.tiny)
+
+alertcondition(longSignal, "ORB LONG SIGNAL", "ORB LONG SIGNAL")
+alertcondition(shortSignal, "ORB SHORT SIGNAL", "ORB SHORT SIGNAL")
+
+if longSignal
+    alert('{"strategy":"ORB","version":"1.0.0","event":"SIGNAL","direction":"LONG","symbol":"' + syminfo.tickerid + '","H_OR":' + str.tostring(rangeHigh, format.mintick) + ',"L_OR":' + str.tostring(rangeLow, format.mintick) + '}', alert.freq_once_per_bar_close)
+if shortSignal
+    alert('{"strategy":"ORB","version":"1.0.0","event":"SIGNAL","direction":"SHORT","symbol":"' + syminfo.tickerid + '","H_OR":' + str.tostring(rangeHigh, format.mintick) + ',"L_OR":' + str.tostring(rangeLow, format.mintick) + '}', alert.freq_once_per_bar_close)
+
+if barstate.islast and not validTf
+    label.new(bar_index, high, "ORB v1 requires a conventional 5-minute chart", style=label.style_label_down, textcolor=color.white, color=color.red)

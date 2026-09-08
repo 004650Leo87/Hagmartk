@@ -1,6 +1,19 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { getOrbStatus } from '../services/api';
 
 export default function StrategyCenterView() {
+  const [orbStatus, setOrbStatus] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+    getOrbStatus().then((data) => {
+      if (mounted) setOrbStatus(data);
+    }).catch(() => {
+      if (mounted) setOrbStatus(null);
+    });
+    return () => { mounted = false; };
+  }, []);
+
   return (
     <div className="hk-view-container">
       <div className="hk-view-header">
@@ -107,6 +120,44 @@ export default function StrategyCenterView() {
           </div>
         </div>
       </div>
+
+      <div className="hk-card full-width" style={{ marginTop: '16px' }}>
+        <div className="hk-card-header">
+          <span className="hk-card-icon">🧭</span>
+          <h3>ORB — Opening Range 15M / Sinal 5M / Alvo 2R</h3>
+        </div>
+        <div className="hk-card-body">
+          <p className="hk-text-secondary">
+            Estratégia ORB v1.0.0 integrada ao motor quantitativo em estágio de validação. O núcleo de sinal, risco, execução de referência e estatísticas está congelado; operação real permanece bloqueada.
+          </p>
+          <div className="hk-grid-3">
+            <div className="hk-param-row"><span>Faixa inicial:</span><strong>15 minutos</strong></div>
+            <div className="hk-param-row"><span>Sinal:</span><strong>Fechamento M5 fora da faixa</strong></div>
+            <div className="hk-param-row"><span>Alvo:</span><strong>2R fixo / 100%</strong></div>
+            <div className="hk-param-row"><span>Risco:</span><strong>0,25% por oportunidade</strong></div>
+            <div className="hk-param-row"><span>TradingView:</span><strong>ORB</strong></div>
+            <div className="hk-param-row"><span>Ordens reais:</span><strong>NÃO</strong></div>
+          </div>
+
+          <div className="hk-param-row" style={{ marginTop: '10px' }}>
+            <span>Estágio:</span>
+            <strong>{orbStatus?.stage || 'VALIDATION'}</strong>
+          </div>
+          <div className="hk-param-row">
+            <span>Perfis de sessão:</span>
+            <strong>{orbStatus?.session_profiles_configured ?? 0}</strong>
+          </div>
+          <div className="hk-param-row">
+            <span>Status prospectivo:</span>
+            <strong>{orbStatus?.blocking_reason || 'EXPLICIT_SESSION_PROFILES_REQUIRED'}</strong>
+          </div>
+          <div className="hk-param-row">
+            <span>Config Hash:</span>
+            <code>{orbStatus?.config_hash ? `${orbStatus.config_hash.slice(0, 12)}...` : 'c1db74b8f238...'}</code>
+          </div>
+        </div>
+      </div>
+
     </div>
   );
 }

@@ -1,0 +1,6 @@
+{
+  "strategy_id": "ORB_OPENING_RANGE_15M_5M_2R",
+  "version": "1.0.0",
+  "policy": "EXPLICIT_ONLY_NO_UNIVERSAL_OPEN_ASSUMPTION",
+  "profiles": []
+}

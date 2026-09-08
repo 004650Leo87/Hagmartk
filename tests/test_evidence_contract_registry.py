@@ -31,6 +31,7 @@ def test_registry_contains_only_declared_product_evidence_contracts():
         "HDF_FIBONACCI_RESEARCH_V1",
         "CYCLE_THEORY_V111_FIDELITY_EVIDENCE",
         "CYCLE_THEORY_V111_SHADOW_EVIDENCE",
+        "ORB_V1_CONFORMANCE_EVIDENCE",
     }
 
 
