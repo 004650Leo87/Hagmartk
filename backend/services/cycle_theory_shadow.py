@@ -55,7 +55,14 @@ def _week_key(local_dt: datetime) -> str:
 
 def _is_24_7(symbol_row: dict[str, Any]) -> bool:
     path = str(symbol_row.get("broker_path") or symbol_row.get("path") or "").lower()
-    return path.startswith("cryptos\\") or path.startswith("24-7\\")
+    category = str(symbol_row.get("category") or "").upper()
+    provider = str(symbol_row.get("provider") or "").upper()
+    return (
+        category == "CRYPTO"
+        or provider == "BINANCE_USDM_FUTURES"
+        or path.startswith("cryptos\\")
+        or path.startswith("24-7\\")
+    )
 
 
 def select_cycle_timeframe(symbol_row: dict[str, Any], local_dt: datetime, opening_trade_seen: bool) -> str:
@@ -85,6 +92,7 @@ class CycleRuntimeContext:
     last_checkpoint_signature: str = ""
     last_checkpoint_monotonic: float = 0.0
     errors: int = 0
+    clock: CycleTheoryBrokerClock | None = None
 
     def has_active_trade(self) -> bool:
         return self.broker.has_active_trade(self.strategy.inputs.magic_num, self.symbol)
@@ -137,6 +145,11 @@ class CycleTheoryProspectiveScanner:
             symbol_row=dict(row), timeframe=timeframe, broker=broker,
             strategy=strategy, execution=execution,
             telemetry_cursor=len(strategy.sm.telemetry.events),
+            clock=(
+                CycleTheoryBrokerClock(offset_hours=0.0)
+                if str(row.get("provider") or "").upper() == "BINANCE_USDM_FUTURES"
+                else self.clock
+            ),
         )
         self._restore_runtime(context)
         return context
@@ -162,12 +175,12 @@ class CycleTheoryProspectiveScanner:
         return tick_utc.replace(minute=minute, second=0, microsecond=0)
 
     def _refresh_bars(self, adapter: Any, context: CycleRuntimeContext) -> None:
-        assert self.clock is not None
+        assert context.clock is not None
         rows = adapter.get_candles(context.symbol, context.timeframe, count=40)
         replay_rows: list[ReplayBar] = []
         candles: list[Candle] = []
         for row in rows:
-            server_time = self.clock.iso_utc_to_server_naive(str(row["time"]))
+            server_time = context.clock.iso_utc_to_server_naive(str(row["time"]))
             replay_rows.append(ReplayBar(
                 time=server_time, open=float(row["open"]), high=float(row["high"]),
                 low=float(row["low"]), close=float(row["close"]),
@@ -279,8 +292,8 @@ class CycleTheoryProspectiveScanner:
         return len(new)
 
     def _process_tick(self, context: CycleRuntimeContext, bid: float, ask: float, tick_utc: datetime) -> None:
-        assert self.clock is not None
-        server_time = self.clock.utc_to_server_naive(tick_utc)
+        assert context.clock is not None
+        server_time = context.clock.utc_to_server_naive(tick_utc)
         execution_events = context.execution.process_tick(bid=bid, ask=ask, at=server_time)
         for item in execution_events:
             self._record_event(context, item.kind, {
@@ -331,9 +344,15 @@ class CycleTheoryProspectiveScanner:
             self.refresh_universe(adapter)
         processed = 0
         errors = 0
+        bulk_quotes = {}
+        if hasattr(adapter, "get_quotes_bulk"):
+            try:
+                bulk_quotes = adapter.get_quotes_bulk() or {}
+            except Exception:
+                bulk_quotes = {}
         for symbol, row in list(self.symbol_rows.items()):
             try:
-                quote = adapter.get_quote(symbol)
+                quote = bulk_quotes.get(symbol) or adapter.get_quote(symbol)
                 tick_utc = _parse_utc(str(quote["time"]))
                 if symbol not in self.contexts:
                     local_dt = tick_utc.astimezone(_SAO_PAULO)

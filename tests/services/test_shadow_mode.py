@@ -166,4 +166,6 @@ def test_X_Y_Z_api_shadow_endpoints():
 
     r_scanners = client.get("/api/shadow/scanners")
     assert r_scanners.status_code == 200
-    assert len(r_scanners.json()) == 104
+    status = r_status.json()
+    assert len(r_scanners.json()) == status["configured_combinations"]
+    assert len(r_scanners.json()) >= 104

@@ -76,3 +76,20 @@ def test_unsupported_provider_failures_do_not_pollute_active_coverage(tmp_path):
     assert btc["failed_checks"] == 1
     assert btc["coverage_included"] is False
     assert btc["health"] == "UNSUPPORTED_BY_PROVIDER"
+
+
+def test_refresh_expands_runtime_universe_with_provider_assets(tmp_path):
+    repo = ShadowStoreRepository(str(tmp_path / "shadow_dynamic.db"))
+    scanner = ShadowScannerManager(store=repo)
+    symbols = [*SHADOW_ASSETS, "BTCUSDT", "SOLUSDT", "US500"]
+
+    supported, unsupported = scanner.refresh_provider_support(FakeCatalogAdapter(symbols))
+
+    assert "BTCUSDT" in supported
+    assert "SOLUSDT" in supported
+    assert "US500" in supported
+    assert unsupported == []
+    assert set(scanner.get_runtime_assets()) >= set(symbols)
+    assert len(scanner.provider_supported_assets) == len(set(symbols))
+    support = repo.get_provider_support()
+    assert support["BTCUSDT"]["supported"] is True

@@ -43,7 +43,12 @@ def _choose_adapter(adapter_mode: Optional[str]):
 
         return MT5MarketAdapter()
 
-    raise ValueError(f"Unknown adapter mode '{mode}'. Valid: mock, mt5")
+    if mode == "unified":
+        from backend.engines.market.unified_market_adapter import UnifiedMarketAdapter
+
+        return UnifiedMarketAdapter()
+
+    raise ValueError(f"Unknown adapter mode '{mode}'. Valid: mock, mt5, unified")
 
 
 def create_system(adapter_mode: Optional[str] = None) -> Dict:

@@ -92,14 +92,14 @@ export default function StrategyCenterView() {
       <div className="hk-card full-width">
         <div className="hk-card-header">
           <span className="hk-card-icon">🛡️</span>
-          <h3>Shadow Universe (104 Combina&ccedil;&otilde;es)</h3>
+          <h3>Shadow Universe Multi-Provider</h3>
         </div>
         <div className="hk-card-body">
           <p className="hk-text-secondary">
-            O universo operacional monitora 13 ativos em 8 timeframes (M5, M15, M30, H1, H2, H4, D1, W1): 104 combina&ccedil;&otilde;es prospectivas, sem execu&ccedil;&atilde;o de ordens reais. O candidato matem&aacute;tico v1.0.0 permanece congelado.
+            O universo operacional &eacute; descoberto dinamicamente nas fontes MT5/Tickmill e Binance USD-M Futures e monitorado nos 8 timeframes aprovados (M5, M15, M30, H1, H2, H4, D1, W1), sem execu&ccedil;&atilde;o de ordens reais. O candidato matem&aacute;tico v1.0.0 permanece congelado.
           </p>
           <div className="hk-tags-cloud">
-            {['EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCHF', 'USDCAD', 'NZDUSD', 'EURJPY', 'GBPJPY', 'XAUUSD', 'XAGUSD', 'BTCUSD', 'ETHUSD'].map((asset) => (
+            {['MT5 / Tickmill', 'Binance USD-M Futures', '8 Timeframes', 'Shadow / Paper'].map((asset) => (
               <span key={asset} className="hk-tag-chip">
                 {asset} (8 TFs)
               </span>

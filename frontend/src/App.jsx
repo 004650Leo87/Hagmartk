@@ -95,7 +95,8 @@ export default function App() {
   const [systemStatus, setSystemStatus] = useState('UNKNOWN');
   const [systemHealth, setSystemHealth] = useState(null);
   const [activeEvidence, setActiveEvidence] = useState(null);
-  const [operationalCount, setOperationalCount] = useState(39);
+  const [operationalCount, setOperationalCount] = useState(0);
+  const [scannerTotalCount, setScannerTotalCount] = useState(104);
 
   // Theme State ('black-piano' | 'flight-deck-light')
   const [theme, setTheme] = useState(() => localStorage.getItem('hk_theme') || 'black-piano');
@@ -153,6 +154,7 @@ export default function App() {
             !s.is_stale && (s.status === 'RUNNING' || s.status === 'WAITING_NEW_CANDLE')
           ).length;
           setOperationalCount(operational);
+          if (scanners.length > 0) setScannerTotalCount(scanners.length);
         }
       } catch (err) {
         console.error('Erro ao carregar scanners Shadow:', err);
@@ -281,7 +283,7 @@ export default function App() {
             isZenMode={isZenMode}
             onToggleZen={handleToggleZenMode}
             operationalCount={operationalCount}
-            totalCount={39}
+            totalCount={scannerTotalCount}
           />
         </ErrorBoundary>
 
@@ -409,7 +411,7 @@ export default function App() {
                 systemStatus={systemStatus}
                 systemHealth={systemHealth}
                 operationalCount={operationalCount}
-                totalCount={39}
+                totalCount={scannerTotalCount}
               />
             </ErrorBoundary>
           )}
@@ -422,7 +424,7 @@ export default function App() {
               mt5Connected={systemStatus === 'ONLINE'}
               shadowStatus="RUNNING"
               operationalCount={operationalCount}
-              totalCount={39}
+              totalCount={scannerTotalCount}
               isDrawerOpen={isBottomDrawerOpen}
               onToggleDrawer={() => setIsBottomDrawerOpen((prev) => !prev)}
               activeDrawerTab={bottomDrawerTab}

@@ -35,7 +35,7 @@ const STATUS_LABELS = {
 const FOREX = ["EURUSD","GBPUSD","USDJPY","AUDUSD","USDCHF","USDCAD","NZDUSD","EURJPY","GBPJPY"];
 const METALS = ["XAUUSD","XAGUSD"];
 const SHADOW_TIMEFRAMES = ["M5", "M15", "M30", "H1", "H2", "H4", "D1", "W1"];
-const SHADOW_TOTAL_COMBINATIONS = 13 * SHADOW_TIMEFRAMES.length;
+const BASE_SHADOW_TOTAL_COMBINATIONS = 13 * SHADOW_TIMEFRAMES.length;
 
 function getAssetClass(symbol) {
   if (FOREX.includes(symbol)) return "FOREX";
@@ -146,10 +146,11 @@ export default function ShadowStrategiesView() {
     return scanners.filter((sc) => {
       const q = monitorSearch.trim().toUpperCase();
       if (q && !sc.symbol.includes(q)) return false;
-      if (monitorAssetFilter === "FOREX" && !FOREX.includes(sc.symbol)) return false;
-      if (monitorAssetFilter === "METAIS" && !METALS.includes(sc.symbol)) return false;
-      if (monitorAssetFilter === "CRIPTO" && FOREX.includes(sc.symbol)) return false;
-      if (monitorAssetFilter === "CRIPTO" && METALS.includes(sc.symbol)) return false;
+      const cls = sc.asset_class || getAssetClass(sc.symbol);
+      if (monitorAssetFilter === "FOREX" && cls !== "FOREX") return false;
+      if (monitorAssetFilter === "METAIS" && cls !== "METALS") return false;
+      if (monitorAssetFilter === "CRIPTO" && cls !== "CRYPTO") return false;
+      if (monitorAssetFilter === "OUTROS" && ["FOREX", "METALS", "CRYPTO"].includes(cls)) return false;
       if (monitorTfFilter !== "TODOS" && sc.timeframe !== monitorTfFilter) return false;
       if (monitorStatusFilter !== "TODOS" && sc.status !== monitorStatusFilter) return false;
       return true;
@@ -157,7 +158,9 @@ export default function ShadowStrategiesView() {
   }, [scanners, monitorSearch, monitorAssetFilter, monitorTfFilter, monitorStatusFilter]);
 
   const activeScannersCount = scanners.filter((s) => ["RUNNING", "WAITING_NEW_CANDLE"].includes(s.status)).length;
-  const totalScannersCount = scanners.length || SHADOW_TOTAL_COMBINATIONS;
+  const configuredAssetsCount = status?.configured_assets ?? (new Set(scanners.map((s) => s.symbol)).size || 13);
+  const configuredCombinations = status?.configured_combinations ?? (scanners.length || BASE_SHADOW_TOTAL_COMBINATIONS);
+  const totalScannersCount = scanners.length || configuredCombinations;
   const errorScannersCount = scanners.filter((s) => s.status === "ERROR").length;
 
   if (loading && !candidate) {
@@ -260,7 +263,7 @@ export default function ShadowStrategiesView() {
         {[
           { id: "overview", label: "Visão Geral" },
           { id: "forward_val", label: "Validação Prospectiva (Forward)" },
-          { id: "scanners", label: `Shadow Monitor (${scanners.length}/${SHADOW_TOTAL_COMBINATIONS})` },
+          { id: "scanners", label: `Shadow Monitor (${scanners.length}/${configuredCombinations})` },
           { id: "statistics", label: "Estatísticas Prospectivas vs Histórico" },
           { id: "history", label: "Histórico Prospectivo" },
         ].map((tab) => (
@@ -283,9 +286,9 @@ export default function ShadowStrategiesView() {
 
           <div className="strategy-metrics-grid">
             {[
-              { label: "Ativos Monitorados", value: "13", sub: "Shadow Universe" },
+              { label: "Ativos Monitorados", value: String(configuredAssetsCount), sub: "Universo multi-provider" },
               { label: "Timeframes", value: String(SHADOW_TIMEFRAMES.length), sub: SHADOW_TIMEFRAMES.join(" / ") },
-              { label: "Combina\u00e7\u00f5es", value: String(SHADOW_TOTAL_COMBINATIONS), sub: "13 x 8 TF" },
+              { label: "Combina\u00e7\u00f5es", value: String(configuredCombinations), sub: `${configuredAssetsCount} x 8 TF` },
               { label: "Scanners Ativos", value: activeScannersCount, sub: `de ${scanners.length} total`, color: activeScannersCount > 0 ? "#34d399" : "#64748b" },
               { label: "Com Erro", value: errorScannersCount, sub: "scanners", color: errorScannersCount > 0 ? "#f87171" : "#64748b" },
               { label: "Eventos Ativos", value: status?.active_events ?? 0, sub: "Armados + Ativados", color: "#f59e0b" },
@@ -309,7 +312,7 @@ export default function ShadowStrategiesView() {
         <div className="bg-slate-800/60 p-5 rounded-xl border border-slate-700/60 space-y-4">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
             {[
-              { label: "Total Combina\u00e7\u00f5es", value: String(SHADOW_TOTAL_COMBINATIONS), color: "" },
+              { label: "Total Combina\u00e7\u00f5es", value: String(configuredCombinations), color: "" },
               { label: "Scanners Ativos", value: `${activeScannersCount}/${totalScannersCount}`, color: activeScannersCount > 0 ? "text-emerald-400" : "text-slate-500" },
               { label: "Com Erro", value: errorScannersCount, color: errorScannersCount > 0 ? "text-red-400" : "" },
               { label: "Eventos Ativos", value: status?.active_events ?? 0, color: "text-amber-400" },
@@ -332,7 +335,7 @@ export default function ShadowStrategiesView() {
               style={{ maxWidth: "160px" }}
             />
             <div className="shadow-monitor-filter-bar" style={{ margin: 0 }}>
-              {["TODOS", "FOREX", "METAIS", "CRIPTO"].map((f) => (
+              {["TODOS", "FOREX", "METAIS", "CRIPTO", "OUTROS"].map((f) => (
                 <button
                   key={f}
                   type="button"
@@ -394,7 +397,7 @@ export default function ShadowStrategiesView() {
                   </tr>
                 ) : (
                   filteredScanners.map((sc, idx) => {
-                    const cls = getAssetClass(sc.symbol);
+                    const cls = sc.asset_class || getAssetClass(sc.symbol);
                     const clsColor = cls === "FOREX" ? { bg: "rgba(99,102,241,0.15)", fg: "#a5b4fc" }
                       : cls === "METALS" ? { bg: "rgba(245,158,11,0.15)", fg: "#fcd34d" }
                       : { bg: "rgba(16,185,129,0.15)", fg: "#6ee7b7" };
@@ -432,7 +435,7 @@ export default function ShadowStrategiesView() {
           </div>
           {errorScannersCount > 0 && (
             <div style={{ background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.3)", borderRadius: "8px", padding: "12px", fontSize: "12px", color: "#fca5a5" }}>
-              ⚠ {errorScannersCount} scanner(s) com erro. Verifique a conectividade com o MetaTrader 5.
+              ⚠ {errorScannersCount} scanner(s) com erro. Verifique as fontes de mercado MT5/Binance.
             </div>
           )}
         </div>
@@ -492,7 +495,7 @@ export default function ShadowStrategiesView() {
           </h3>
           {history.length === 0 ? (
             <div className="text-xs text-slate-400 py-6 text-center bg-slate-900/40 rounded-lg">
-              Nenhum evento prospectivo finalizado ainda. O scanner monitora 104 combina&ccedil;&otilde;es continuamente.
+              Nenhum evento prospectivo finalizado ainda. O scanner monitora {configuredCombinations} combina&ccedil;&otilde;es continuamente.
             </div>
           ) : (
             <div style={{ maxHeight: "400px", overflowY: "auto", border: "1px solid #1e293b", borderRadius: "8px" }}>
@@ -675,7 +678,7 @@ export default function ShadowStrategiesView() {
                 style={{ fontSize: "11px", padding: "4px 10px" }}
                 onClick={() => setShowTelemetryModal(true)}
               >
-                📊 Ver Detalhes (104 Combina&ccedil;&otilde;es)
+                📊 Ver Detalhes ({configuredCombinations} Combina&ccedil;&otilde;es)
               </button>
             </div>
 
@@ -731,7 +734,7 @@ export default function ShadowStrategiesView() {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
                   <div>
                     <h3 style={{ fontSize: "16px", fontWeight: "700", color: "#f8fafc", margin: 0 }}>
-                      TELEMETRIA DAS 104 COMBINA&Ccedil;&Otilde;ES DO SHADOW UNIVERSE</h3>
+                      TELEMETRIA DAS {configuredCombinations} COMBINA&Ccedil;&Otilde;ES DO SHADOW UNIVERSE</h3>
                     <span style={{ fontSize: "11px", color: "#94a3b8" }}>
                       Monitoramento individual por Instrumento x Timeframe
                     </span>
@@ -989,7 +992,7 @@ export default function ShadowStrategiesView() {
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "10px", marginBottom: "12px" }}>
               <div>
                 <h4 style={{ fontSize: "13px", fontWeight: "700", color: "#f8fafc", margin: 0 }}>
-                  OBSERVA&Ccedil;&Atilde;O PROSPECTIVA &amp; ACUMULA&Ccedil;&Atilde;O CONTINUADA (104 COMBINA&Ccedil;&Otilde;ES)
+                  OBSERVA&Ccedil;&Atilde;O PROSPECTIVA &amp; ACUMULA&Ccedil;&Atilde;O CONTINUADA ({configuredCombinations} COMBINA&Ccedil;&Otilde;ES)
                 </h4>
                 <span style={{ fontSize: "11px", color: "#94a3b8" }}>
                   Acompanhamento continuado do crescimento real da amostra e saúde da observação sem look-ahead bias

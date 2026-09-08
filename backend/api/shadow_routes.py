@@ -29,6 +29,24 @@ _obs_engine = ShadowObservationEngine(store=_store, decision_engine=_evidence_en
 _fib_engine = FibonacciProspectiveTelemetryEngine(store=_store)
 
 
+def _runtime_shadow_assets() -> list[str]:
+    return _store.get_runtime_shadow_assets()
+
+
+def _runtime_supported_assets() -> list[str]:
+    support = _store.get_provider_support()
+    return [
+        sym for sym in _runtime_shadow_assets()
+        if support.get(sym, {}).get("supported", True)
+    ]
+
+
+def _provider_support_checked_at() -> str:
+    support = _store.get_provider_support()
+    values = [str(row.get("checked_at") or "") for row in support.values()]
+    return max(values) if values else ""
+
+
 def _is_visible_paper_event(evt) -> bool:
     meta = evt.metadata or {}
     if evt.event_id.startswith("test_") or meta.get("is_test") or meta.get("synthetic"):
@@ -184,7 +202,7 @@ def get_hdf_funnel_telemetry(
 @router.get("/coverage")
 def get_hdf_scanner_coverage() -> Dict[str, Any]:
     """Retorna a cobertura operacional de escaneamento do universo Shadow configurado com auditoria de XAUUSD."""
-    from backend.services.shadow_scanner import SHADOW_ASSETS, SHADOW_TIMEFRAMES
+    from backend.services.shadow_scanner import SHADOW_TIMEFRAMES
     from backend.core.time_utils import now_utc_str, parse_utc_timestamp
     
     combinations = []
@@ -196,7 +214,7 @@ def get_hdf_scanner_coverage() -> Dict[str, Any]:
     unsupported_count = 0
     now_dt = parse_utc_timestamp(now_utc_str())
 
-    for sym in SHADOW_ASSETS:
+    for sym in _runtime_shadow_assets():
         for tf in SHADOW_TIMEFRAMES:
             st = _store.get_scanner_state(HDF_ROBUST_CANDIDATE_V1.candidate_id, sym, tf)
             status_val = st.scanner_status if st else "RUNNING"
@@ -306,13 +324,14 @@ def get_shadow_status() -> Dict[str, Any]:
         "mode": "SHADOW",
         "enabled": _scanner.enabled,
         "started_at": _scanner.shadow_started_at,
-        "configured_combinations": len(SHADOW_ASSETS) * len(SHADOW_TIMEFRAMES),
-        "monitored_combinations": len(_scanner.provider_supported_assets) * len(SHADOW_TIMEFRAMES),
-        "unsupported_symbols": list(_scanner.provider_unsupported_assets),
-        "provider_support_checked_at": _scanner.provider_support_checked_at,
+        "configured_assets": len(_runtime_shadow_assets()),
+        "configured_combinations": len(_runtime_shadow_assets()) * len(SHADOW_TIMEFRAMES),
+        "monitored_combinations": len(_runtime_supported_assets()) * len(SHADOW_TIMEFRAMES),
+        "unsupported_symbols": [sym for sym in _runtime_shadow_assets() if sym not in _runtime_supported_assets()],
+        "provider_support_checked_at": _provider_support_checked_at(),
         "total_events": stats.total_events_detected,
         "active_events": stats.open_count + stats.armed_count,
-        "external_publishing": "DISABLED",
+        "external_publishing": "TELEGRAM_SHADOW",
         "broker_trading": "DISABLED",
     }
 
@@ -542,29 +561,25 @@ def get_shadow_event_navigation(event_id: str) -> Dict[str, Any]:
 
 @router.get("/catalog")
 def get_shadow_catalog() -> Dict[str, Any]:
-    """Retorna o Shadow Universe imutável (13 ativos × 3 timeframes = 39 combinações).
+    """Retorna o Shadow Universe dinâmico descoberto nas fontes de mercado configuradas.
     INDEPENDENTE da watchlist do usuário."""
-    from backend.services.shadow_scanner import FOREX_ASSETS, METALS_ASSETS, CRYPTO_ASSETS
+    from backend.services.shadow_scanner import get_asset_class
+    runtime_assets = _runtime_shadow_assets()
     combinations = []
-    for sym in SHADOW_ASSETS:
+    for sym in runtime_assets:
         for tf in SHADOW_TIMEFRAMES:
-            if sym in FOREX_ASSETS:
-                asset_class = "FOREX"
-            elif sym in METALS_ASSETS:
-                asset_class = "METALS"
-            else:
-                asset_class = "CRYPTO"
+            asset_class = get_asset_class(sym)
             combinations.append({
                 "symbol": sym,
                 "asset_class": asset_class,
                 "timeframe": tf,
             })
     return {
-        "total_assets": len(SHADOW_ASSETS),
+        "total_assets": len(runtime_assets),
         "total_timeframes": len(SHADOW_TIMEFRAMES),
         "total_combinations": len(combinations),
-        "assets": SHADOW_ASSETS,
+        "assets": runtime_assets,
         "timeframes": SHADOW_TIMEFRAMES,
         "combinations": combinations,
-        "note": "Shadow Universe é imutável e independente da watchlist do usuário.",
+        "note": "Shadow Universe é dinâmico por provider e independente da watchlist; parâmetros do candidato permanecem congelados.",
     }

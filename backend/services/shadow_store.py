@@ -641,6 +641,28 @@ class ShadowStoreRepository:
                 )
             return None
 
+    def get_scanner_state_map(self, candidate_id: str) -> Dict[tuple[str, str], ShadowScannerState]:
+        """Load all scanner states for a candidate in one SQLite query."""
+        result: Dict[tuple[str, str], ShadowScannerState] = {}
+        with self._get_connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM shadow_scanner_state WHERE candidate_id = ?", (candidate_id,)
+            ).fetchall()
+        for r in rows:
+            state = ShadowScannerState(
+                candidate_id=r["candidate_id"], symbol=r["symbol"], timeframe=r["timeframe"],
+                enabled=bool(r["enabled"]), last_processed_candle=r["last_processed_candle"],
+                last_scan_at=r["last_scan_at"], scanner_status=r["scanner_status"],
+                error_message=r["error_message"] or "",
+                scan_cycle_count_total=r["scan_cycle_count_total"] or 0,
+                evaluation_count_total=r["evaluation_count_total"] or 0,
+                last_evaluated_candle_time=r["last_evaluated_candle_time"] or "",
+                last_evaluation_at=r["last_evaluation_at"] or "",
+                last_result_stage=r["last_result_stage"] or "NONE",
+            )
+            result[(state.symbol, state.timeframe)] = state
+        return result
+
     def _get_live_candidates(
         self,
         cursor: Any,
@@ -731,9 +753,17 @@ class ShadowStoreRepository:
 
         return live_items
 
+    def get_runtime_shadow_assets(self) -> List[str]:
+        """Provider-discovered runtime universe, with the original 13 as fallback baseline."""
+        from backend.services.shadow_scanner import SHADOW_ASSETS
+        support = self.get_provider_support()
+        if not support:
+            return list(SHADOW_ASSETS)
+        return list(dict.fromkeys([*SHADOW_ASSETS, *support.keys()]))
+
     def get_shadow_heartbeat(self, candidate_id: str = "hdf_dvp_exit_2r") -> Dict[str, Any]:
         """Retorna telemetria e diagnósticos de execução autônoma do Shadow Scanner em tempo real."""
-        from backend.services.shadow_scanner import SHADOW_ASSETS, SHADOW_TIMEFRAMES, get_asset_class
+        from backend.services.shadow_scanner import SHADOW_TIMEFRAMES, get_asset_class
         from backend.core.time_utils import now_utc_datetime, now_utc_str, parse_utc_timestamp
 
         now_dt = now_utc_datetime()
@@ -752,9 +782,11 @@ class ShadowStoreRepository:
         stale_cnt = 0
         error_cnt = 0
 
-        for sym in SHADOW_ASSETS:
+        runtime_assets = self.get_runtime_shadow_assets()
+        state_map = self.get_scanner_state_map(candidate_id)
+        for sym in runtime_assets:
             for tf in SHADOW_TIMEFRAMES:
-                st = self.get_scanner_state(candidate_id, sym, tf)
+                st = state_map.get((sym, tf))
                 scan_cycles = st.scan_cycle_count_total if st else 0
                 evaluations = st.evaluation_count_total if st else 0
                 status_val = st.scanner_status if st else "RUNNING"
@@ -1093,16 +1125,17 @@ class ShadowStoreRepository:
 
     def get_shadow_telemetry(self, candidate_id: str = "hdf_dvp_exit_2r") -> Dict[str, Any]:
         """Coverage of provider-supported Shadow combinations; configured universe remains auditable."""
-        from backend.services.shadow_scanner import SHADOW_ASSETS, SHADOW_TIMEFRAMES, get_asset_class
+        from backend.services.shadow_scanner import SHADOW_TIMEFRAMES, get_asset_class
         from backend.core.time_utils import now_utc_datetime
 
         now_dt = now_utc_datetime()
         provider_support = self.get_provider_support()
+        runtime_assets = self.get_runtime_shadow_assets()
         supported_assets = [
-            sym for sym in SHADOW_ASSETS
+            sym for sym in runtime_assets
             if provider_support.get(sym, {}).get("supported", True)
         ]
-        unsupported_assets = [sym for sym in SHADOW_ASSETS if sym not in supported_assets]
+        unsupported_assets = [sym for sym in runtime_assets if sym not in supported_assets]
 
         with self._get_connection() as conn:
             cursor = conn.cursor()
@@ -1112,7 +1145,7 @@ class ShadowStoreRepository:
             tot_failed = 0
             global_last_activity: Optional[str] = None
 
-            for sym in SHADOW_ASSETS:
+            for sym in runtime_assets:
                 provider_supported = sym in supported_assets
                 support_reason = provider_support.get(sym, {}).get("reason", "SUPPORT_UNKNOWN_ASSUME_CONFIGURED")
                 for tf in SHADOW_TIMEFRAMES:
@@ -1179,8 +1212,8 @@ class ShadowStoreRepository:
             return {
                 "candidate_id": candidate_id,
                 "global": {
-                    "total_combinations": len(SHADOW_ASSETS) * len(SHADOW_TIMEFRAMES),
-                    "configured_combinations": len(SHADOW_ASSETS) * len(SHADOW_TIMEFRAMES),
+                    "total_combinations": len(runtime_assets) * len(SHADOW_TIMEFRAMES),
+                    "configured_combinations": len(runtime_assets) * len(SHADOW_TIMEFRAMES),
                     "provider_supported_combinations": len(supported_assets) * len(SHADOW_TIMEFRAMES),
                     "provider_unsupported_combinations": len(unsupported_assets) * len(SHADOW_TIMEFRAMES),
                     "unsupported_symbols": unsupported_assets,

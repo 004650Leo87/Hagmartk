@@ -44,3 +44,12 @@ def test_adapter_selection_invalid(monkeypatch):
         assert False, "create_system should have raised for invalid adapter"
     except ValueError:
         pass
+
+
+def test_unified_adapter_can_be_selected_without_starting_live_connections(monkeypatch):
+    monkeypatch.setenv("HAGMARTK_MARKET_ADAPTER", "unified")
+    system = create_system()
+    from backend.engines.market.unified_market_adapter import UnifiedMarketAdapter
+
+    assert system["adapter_mode"] == "unified"
+    assert isinstance(system["market_engine"].adapter, UnifiedMarketAdapter)

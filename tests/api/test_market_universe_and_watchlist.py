@@ -183,6 +183,6 @@ def test_catalog_and_shadow_catalog_are_independent_sources():
     assert shadow_resp.status_code == 200
 
     shadow_data = shadow_resp.json()
-    assert shadow_data["total_combinations"] == 104
-    assert shadow_data["total_assets"] == 13
     assert shadow_data["total_timeframes"] == 8
+    assert shadow_data["total_assets"] >= len(SHADOW_ASSETS)
+    assert shadow_data["total_combinations"] == shadow_data["total_assets"] * shadow_data["total_timeframes"]

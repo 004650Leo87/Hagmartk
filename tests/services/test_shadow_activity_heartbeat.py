@@ -19,7 +19,8 @@ def test_shadow_heartbeat_returns_live_telemetry():
     hb = store.get_shadow_heartbeat()
 
     assert hb is not None
-    assert hb["registered"] == 104
+    assert hb["registered"] >= len(SHADOW_ASSETS) * len(SHADOW_TIMEFRAMES)
+    assert hb["registered"] == len(hb.get("scanners", []))
     assert "totals" in hb
     totals = hb["totals"]
     assert "scan_cycles" in totals

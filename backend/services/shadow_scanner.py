@@ -40,9 +40,9 @@ def get_asset_class(symbol: str) -> str:
         return "FOREX"
     elif symbol in METALS_ASSETS:
         return "METALS"
-    elif symbol in CRYPTO_ASSETS:
+    elif symbol in CRYPTO_ASSETS or symbol.upper().endswith(("USDT", "USDC", "BUSD")):
         return "CRYPTO"
-    return "UNKNOWN"
+    return "OTHER"
 
 
 def resolve_supported_shadow_assets(adapter: Any) -> tuple[List[str], List[str]]:
@@ -98,17 +98,21 @@ class ShadowScannerManager:
         self.cache = cache or OHLCDataCache()
         self.runtime_started_at = now_utc_str()
         self.publisher = InternalShadowPublisher(self.store)
+        self.runtime_assets = list(SHADOW_ASSETS)
+        self.runtime_asset_rows: Dict[str, Dict[str, Any]] = {}
+        self._next_scan_due: Dict[tuple[str, str], datetime] = {}
         self.provider_supported_assets = list(SHADOW_ASSETS)
         self.provider_unsupported_assets: List[str] = []
         self.provider_support_checked_at = ""
         persisted_support = self.store.get_provider_support()
         if persisted_support:
+            self.runtime_assets = list(dict.fromkeys([*SHADOW_ASSETS, *persisted_support.keys()]))
             self.provider_supported_assets = [
-                sym for sym in SHADOW_ASSETS
-                if persisted_support.get(sym, {}).get("supported", True)
+                sym for sym in self.runtime_assets
+                if persisted_support.get(sym, {}).get("supported", sym in SHADOW_ASSETS)
             ]
             self.provider_unsupported_assets = [
-                sym for sym in SHADOW_ASSETS if sym not in self.provider_supported_assets
+                sym for sym in self.runtime_assets if sym not in self.provider_supported_assets
             ]
             checked = [v.get("checked_at", "") for v in persisted_support.values()]
             self.provider_support_checked_at = max(checked) if checked else ""
@@ -160,6 +164,44 @@ class ShadowScannerManager:
             else self.shadow_started_at
         )
 
+    def get_runtime_assets(self) -> List[str]:
+        support = self.store.get_provider_support()
+        if support:
+            return list(dict.fromkeys([*SHADOW_ASSETS, *support.keys()]))
+        return list(self.runtime_assets)
+
+    def get_runtime_asset_class(self, symbol: str) -> str:
+        row = self.runtime_asset_rows.get(symbol.upper()) or {}
+        category = str(row.get("category") or "").upper().strip()
+        return category or get_asset_class(symbol)
+
+    @staticmethod
+    def _is_remote_symbol(adapter: Any, symbol: str) -> bool:
+        try:
+            return getattr(adapter, "provider_for_symbol")(symbol) == "BINANCE_USDM_FUTURES"
+        except Exception:
+            return False
+
+    def _combo_is_due(self, symbol: str, timeframe: str, now_dt: datetime) -> bool:
+        due = self._next_scan_due.get((symbol, timeframe))
+        return due is None or now_dt >= due
+
+    def _schedule_next_combo(self, symbol: str, timeframe: str, df: pd.DataFrame) -> None:
+        now_dt = now_utc_datetime()
+        delay = timedelta(seconds=30)
+        try:
+            closed = get_only_closed_candles(df, timeframe, now_dt=now_dt)
+            if not closed.empty:
+                opened = parse_utc_timestamp(str(closed["time"].iloc[-1]))
+                minutes = SHADOW_TIMEFRAME_MINUTES[timeframe]
+                if opened is not None:
+                    next_close = opened + timedelta(minutes=2 * minutes, seconds=2)
+                    self._next_scan_due[(symbol, timeframe)] = max(now_dt + timedelta(seconds=1), next_close)
+                    return
+        except Exception:
+            pass
+        self._next_scan_due[(symbol, timeframe)] = now_dt + delay
+
     def enable_shadow(self) -> None:
         self.enabled = True
         if not self.shadow_started_at:
@@ -168,7 +210,7 @@ class ShadowScannerManager:
             HDF_ROBUST_CANDIDATE_V1.candidate_id, self.shadow_started_at, self.enabled
         )
         _logger.info("[SHADOW] SHADOW_BOOTSTRAP: Shadow Mode ativado em %s", self.shadow_started_at)
-        for sym in SHADOW_ASSETS:
+        for sym in self.get_runtime_assets():
             for tf in SHADOW_TIMEFRAMES:
                 st = ShadowScannerState(
                     candidate_id=HDF_ROBUST_CANDIDATE_V1.candidate_id,
@@ -184,7 +226,7 @@ class ShadowScannerManager:
         self.store.save_shadow_session(
             HDF_ROBUST_CANDIDATE_V1.candidate_id, self.shadow_started_at, False
         )
-        for sym in SHADOW_ASSETS:
+        for sym in self.get_runtime_assets():
             for tf in SHADOW_TIMEFRAMES:
                 st = self.store.get_scanner_state(HDF_ROBUST_CANDIDATE_V1.candidate_id, sym, tf)
                 if st:
@@ -193,29 +235,45 @@ class ShadowScannerManager:
                     self.store.save_scanner_state(st)
 
     def refresh_provider_support(self, adapter: Any) -> tuple[List[str], List[str]]:
-        supported, unsupported = resolve_supported_shadow_assets(adapter)
+        rows = adapter.get_symbols()
+        row_map = {
+            str(item.get("symbol") or item.get("name") or "").upper().strip(): dict(item)
+            for item in rows if isinstance(item, dict)
+            and str(item.get("symbol") or item.get("name") or "").strip()
+        }
+        names = set(row_map)
+        if not names:
+            raise RuntimeError("Provider symbol catalog is empty; support state cannot be resolved")
+        persisted = self.store.get_provider_support()
+        self.runtime_assets = list(dict.fromkeys([*SHADOW_ASSETS, *persisted.keys(), *sorted(names)]))
+        self.runtime_asset_rows = row_map
+        supported = [sym for sym in self.runtime_assets if sym in names]
+        unsupported = [sym for sym in self.runtime_assets if sym not in names]
         checked_at = now_utc_str()
         self.provider_supported_assets = list(supported)
         self.provider_unsupported_assets = list(unsupported)
         self.provider_support_checked_at = checked_at
 
-        for sym in SHADOW_ASSETS:
+        for sym in self.runtime_assets:
             is_supported = sym in supported
             reason = "AVAILABLE_IN_PROVIDER_CATALOG" if is_supported else "UNSUPPORTED_BY_PROVIDER"
             self.store.save_provider_support(sym, is_supported, reason, checked_at)
             for tf in SHADOW_TIMEFRAMES:
                 st = self.store.get_scanner_state(
                     HDF_ROBUST_CANDIDATE_V1.candidate_id, sym, tf
-                ) or ShadowScannerState(
-                    candidate_id=HDF_ROBUST_CANDIDATE_V1.candidate_id, symbol=sym, timeframe=tf
                 )
                 if is_supported:
-                    if st.scanner_status == ScannerStatus.UNSUPPORTED_BY_PROVIDER.value:
+                    if st is not None and st.scanner_status == ScannerStatus.UNSUPPORTED_BY_PROVIDER.value:
                         st.scanner_status = ScannerStatus.RUNNING.value
-                else:
-                    st.scanner_status = ScannerStatus.UNSUPPORTED_BY_PROVIDER.value
-                    st.last_scan_at = checked_at
-                    st.error_message = ""
+                        st.error_message = ""
+                        self.store.save_scanner_state(st)
+                    continue
+                st = st or ShadowScannerState(
+                    candidate_id=HDF_ROBUST_CANDIDATE_V1.candidate_id, symbol=sym, timeframe=tf
+                )
+                st.scanner_status = ScannerStatus.UNSUPPORTED_BY_PROVIDER.value
+                st.last_scan_at = checked_at
+                st.error_message = ""
                 self.store.save_scanner_state(st)
 
         _logger.info(
@@ -549,7 +607,7 @@ class ShadowScannerManager:
                 candidate_version=HDF_ROBUST_CANDIDATE_V1.candidate_version,
                 parameter_hash=HDF_CANDIDATE_V1_PARAMETER_HASH,
                 symbol=symbol,
-                asset_class=get_asset_class(symbol),
+                asset_class=self.get_runtime_asset_class(symbol),
                 timeframe=timeframe,
                 direction=dir_val,
                 pattern_type=pattern_value,
@@ -658,7 +716,7 @@ class ShadowScannerManager:
         """Varre todas as 39 combinações de mercado a cada ciclo de fechamento de candle."""
         summary = {"processed_combinations": 0, "new_events_count": 0, "errors": 0}
 
-        for sym in SHADOW_ASSETS:
+        for sym in self.get_runtime_assets():
             for tf in SHADOW_TIMEFRAMES:
                 key = f"{sym}_{tf}"
                 df = data_map.get(key)
@@ -711,16 +769,26 @@ class ShadowScannerManager:
                             self.refresh_provider_support(current_adapter)
                         except Exception as _support_err:
                             _logger.warning("[SHADOW] Provider support refresh failed: %s", _support_err)
-                        next_support_refresh = support_now + 60.0
+                        next_support_refresh = support_now + 3600.0
 
+                    remote_budget = 40
+                    remote_used = 0
+                    cycle_now = now_utc_datetime()
                     for sym in self.provider_supported_assets:
+                        is_remote = self._is_remote_symbol(current_adapter, sym)
                         for tf in SHADOW_TIMEFRAMES:
                             if not getattr(self, "_scheduler_running", False):
                                 break
+                            if not self._combo_is_due(sym, tf, cycle_now):
+                                continue
+                            if is_remote and remote_used >= remote_budget:
+                                continue
                             tf_const = SUPPORTED_TIMEFRAMES.get(tf.upper())
                             if tf_const is None:
                                 raise RuntimeError(f"Shadow timeframe sem codigo MT5: {tf}")
                             df_candles = pd.DataFrame()
+                            if is_remote:
+                                remote_used += 1
                             try:
                                 candles_list = current_adapter.get_candles(sym, tf_const, count=100)
                                 if candles_list:
@@ -732,6 +800,8 @@ class ShadowScannerManager:
                                 self.scan_closed_candle(sym, tf, df_candles)
                             except Exception as _scan_err:
                                 _logger.warning("[SHADOW] Erro em scan_closed_candle para %s %s: %s", sym, tf, _scan_err)
+                            finally:
+                                self._schedule_next_combo(sym, tf, df_candles)
                 except Exception as ex:
                     _logger.warning("[SHADOW] Exceção no loop do scheduler autônomo: %s", ex)
 
@@ -786,7 +856,7 @@ class ShadowScannerManager:
 
             pivot_highs, pivot_lows = self.strategy.pivot_detector.find_pivots(df_calc)
             n = len(df_calc)
-            asset_class = get_asset_class(symbol)
+            asset_class = self.get_runtime_asset_class(symbol)
             now_str = now_utc_str()
 
             # Bullish check (fundos no preço, fundos no RSI)

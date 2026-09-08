@@ -64,3 +64,31 @@ def test_cycle_status_endpoint_is_safe_when_not_started(monkeypatch):
     assert payload["enabled"] is False
     assert payload["real_order_execution_enabled"] is False
     assert "token" not in payload and "chat_id" not in payload
+
+
+def test_binance_futures_is_always_treated_as_24_7_m5():
+    tz = ZoneInfo("America/Sao_Paulo")
+    sunday = datetime(2026, 9, 6, 19, 0, tzinfo=tz)
+    binance = {
+        "symbol": "BTCUSDT",
+        "category": "CRYPTO",
+        "provider": "BINANCE_USDM_FUTURES",
+        "broker_path": "Binance USD-M/USDT/PERPETUAL",
+    }
+    assert select_cycle_timeframe(binance, sunday, opening_trade_seen=False) == "M5"
+
+
+def test_binance_context_uses_exchange_utc_clock_not_mt5_server_clock(tmp_path):
+    from backend.services.cycle_theory_shadow import CycleTheoryProspectiveScanner
+    from backend.strategies.cycle_theory.time_domain import CycleTheoryBrokerClock
+
+    scanner = CycleTheoryProspectiveScanner(store=CycleTheoryShadowStore(str(tmp_path / "cycle_clock.db")))
+    scanner.clock = CycleTheoryBrokerClock(offset_hours=3.0)
+    row = {
+        "symbol": "BTCUSDT", "category": "CRYPTO", "provider": "BINANCE_USDM_FUTURES",
+        "point": 0.1, "digits": 1, "volume_step": 0.001,
+        "volume_min": 0.001, "volume_max": 1000.0,
+    }
+    context = scanner._new_context(row, "M5")
+    assert context.clock is not None
+    assert context.clock.offset_hours == 0.0

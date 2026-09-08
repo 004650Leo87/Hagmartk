@@ -225,3 +225,28 @@ class BinanceUSDMFuturesMarketAdapter(MarketAdapter):
             "last_funding_rate": float(payload.get("lastFundingRate") or 0),
             "next_funding_time": int(payload.get("nextFundingTime") or 0),
         }
+
+    def get_book_tickers(self) -> Dict[str, Dict[str, Any]]:
+        """Return one public all-market Bid/Ask snapshot keyed by symbol."""
+        payload = self._request_json("/fapi/v1/ticker/bookTicker")
+        if not isinstance(payload, list):
+            raise AdapterError("Binance USD-M bookTicker returned invalid payload")
+        received_at = datetime.now(timezone.utc).isoformat()
+        result: Dict[str, Dict[str, Any]] = {}
+        for row in payload:
+            symbol = str(row.get("symbol") or "").upper().strip()
+            if not symbol:
+                continue
+            bid = float(row.get("bidPrice") or 0.0)
+            ask = float(row.get("askPrice") or 0.0)
+            event_ms = int(row.get("time") or 0)
+            event_time = (
+                datetime.fromtimestamp(event_ms / 1000, tz=timezone.utc).isoformat()
+                if event_ms else received_at
+            )
+            result[symbol] = {
+                "symbol": symbol, "provider": PROVIDER_ID, "market_type": MARKET_TYPE,
+                "bid": bid, "ask": ask, "last": 0.0, "time": event_time,
+                "read_only": True,
+            }
+        return result

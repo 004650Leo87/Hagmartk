@@ -39,7 +39,8 @@ class FakeBinance(BinanceUSDMFuturesMarketAdapter):
                 ]
             }
         if path == "/fapi/v1/ticker/bookTicker":
-            return {"symbol": "BTCUSDT", "bidPrice": "80000.10", "askPrice": "80000.20", "time": 1788573600000}
+            row = {"symbol": "BTCUSDT", "bidPrice": "80000.10", "askPrice": "80000.20", "time": 1788573600000}
+            return row if params else [row]
         if path == "/fapi/v1/ticker/price":
             return {"symbol": "BTCUSDT", "price": "80000.15", "time": 1788573600000}
         if path == "/fapi/v1/klines":
