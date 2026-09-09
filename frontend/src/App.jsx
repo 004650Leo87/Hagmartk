@@ -13,6 +13,7 @@ import AiInsightsView from './components/AiInsightsView';
 import AutomationSafetyView from './components/AutomationSafetyView';
 import AlertCenterDrawer from './components/AlertCenterDrawer';
 import MarketAlertsSection from './components/MarketAlertsSection';
+import EvidenceDashboard from './components/EvidenceDashboard';
 import HdfToastStack from './components/HdfToastStack';
 import SymbolSearchModal from './components/SymbolSearchModal';
 import IndicatorManagerModal from './components/IndicatorManagerModal';
@@ -65,7 +66,7 @@ class ErrorBoundary extends Component {
 
 export default function App() {
   // Application State
-  const [activeTab, setActiveTab] = useState('chart'); // 'chart' | 'watchlist' | 'shadow' | 'strategies' | 'backtest' | 'ai' | 'automation' | 'alerts' | 'settings'
+  const [activeTab, setActiveTab] = useState('evidence'); // 'chart' | 'watchlist' | 'shadow' | 'strategies' | 'backtest' | 'ai' | 'automation' | 'alerts' | 'settings'
   const [navExpanded, setNavExpanded] = useState(false);
   
   const [symbol, setSymbol] = useState('XAUUSD');
@@ -109,12 +110,12 @@ export default function App() {
     localStorage.setItem('hk_theme', theme);
   }, [theme]);
 
-  const [showRSI, setShowRSI] = useState(true);
+  const [showRSI, setShowRSI] = useState(false);
   const [indicators, setIndicators] = useState({
     ema20: true,
     ema50: true,
     ema200: false,
-    rsi: true,
+    rsi: false,
   });
 
   // Global Keyboard Shortcuts (Ctrl+K for search)
@@ -265,6 +266,18 @@ export default function App() {
   const handleToggleIndicator = (key) => {
     setIndicators((prev) => ({ ...prev, [key]: !prev[key] }));
   };
+
+  if (activeTab === 'evidence') {
+    return (
+      <ErrorBoundary name="PAINEL DE EVIDÊNCIAS">
+        <EvidenceDashboard
+          onOpenStrategies={() => setActiveTab('strategies')}
+          onOpenReports={() => setActiveTab('alerts')}
+          onOpenLegacyChart={() => setActiveTab('chart')}
+        />
+      </ErrorBoundary>
+    );
+  }
 
   return (
     <ErrorBoundary name="APPLICATION SHELL">

@@ -36,3 +36,5 @@ artifacts/
 
 # Local secrets (never commit)
 secrets/
+data_cache/*.db-wal
+data_cache/*.db-shm

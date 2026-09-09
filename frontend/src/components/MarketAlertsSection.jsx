@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { getRecentMarketAlerts } from '../services/api';
+﻿import React, { useEffect, useMemo, useState } from 'react';
+import { getRecentMarketAlerts, getStrategyPerformance } from '../services/api';
 
 const FILTERS = ['TODOS', 'DVP', 'TC', 'ORB'];
 
@@ -19,6 +19,7 @@ export default function MarketAlertsSection({ onSelectAlert }) {
   const [alerts, setAlerts] = useState([]);
   const [filter, setFilter] = useState('TODOS');
   const [loading, setLoading] = useState(true);
+  const [performance, setPerformance] = useState(null);
 
   useEffect(() => {
     let mounted = true;
@@ -36,6 +37,22 @@ export default function MarketAlertsSection({ onSelectAlert }) {
     const timer = setInterval(load, 5000);
     return () => { mounted = false; clearInterval(timer); };
   }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    async function loadPerformance() {
+      try {
+        const data = await getStrategyPerformance();
+        if (mounted) setPerformance(data?.strategies || null);
+      } catch (err) {
+        console.error('Falha ao carregar desempenho das estrat?gias:', err);
+      }
+    }
+    loadPerformance();
+    const timer = setInterval(loadPerformance, 30000);
+    return () => { mounted = false; clearInterval(timer); };
+  }, []);
+
   const filtered = useMemo(() => {
     if (filter === 'TODOS') return alerts;
     return alerts.filter((item) => item.strategy_key === filter);
@@ -61,6 +78,38 @@ export default function MarketAlertsSection({ onSelectAlert }) {
         </div>
       </div>
 
+      {performance && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          {['DVP', 'TC', 'ORB'].map((key) => {
+            const row = performance[key] || {};
+            const positivePct = row.result_classification?.positive_pct_completed ?? row.result_classification?.positive_pct_exact_sample;
+            return (
+              <div key={key} className="bg-slate-900/80 border border-slate-800 rounded-xl p-4">
+                <div className="text-xs font-extrabold text-slate-100">{row.strategy_name || key}</div>
+                <div className="mt-2 text-[11px] text-slate-400">
+                  Conclu?das: <strong className="text-slate-100">{row.completed_trades ?? 0}</strong>
+                  {positivePct !== undefined && <> ? Positivas: <strong className="text-emerald-300">{positivePct}%</strong></>}
+                </div>
+                {(row.stop_exits !== undefined || row.target_exits !== undefined) && (
+                  <div className="mt-1 text-[11px] text-slate-400">
+                    Stop final: <strong className="text-red-300">{row.stop_exit_pct ?? 0}%</strong> ? Alvo final: <strong className="text-emerald-300">{row.target_exit_pct ?? 0}%</strong>
+                  </div>
+                )}
+                {key === 'ORB' && (row.completed_trades ?? 0) === 0 && (
+                  <div className="mt-1 text-[11px] text-slate-500">Aguardando primeira sess?o prospectiva v?lida.</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {performance?.TC && (
+        <div className="text-[10px] text-slate-500 px-1">
+          Na Teoria dos Ciclos, ?stop final? ? mecanismo de sa?da e pode encerrar uma opera??o ainda positiva ap?s trailing/parciais.
+        </div>
+      )}
+
       {loading && alerts.length === 0 ? (
         <div className="hk-card full-width"><div className="hk-card-body">Carregando ocorrências...</div></div>
       ) : filtered.length === 0 ? (
@@ -85,10 +134,10 @@ export default function MarketAlertsSection({ onSelectAlert }) {
               {(alert.entry || alert.stop || (alert.targets || []).length > 0) && (
                 <div className="grid grid-cols-2 gap-2 mt-3">
                   <Level label="Entrada" value={alert.entry} />
-                  <Level label="Stop" value={alert.stop} tone="stop" />
                   {(alert.targets || []).map((target) => (
                     <Level key={target.label} label={target.label} value={target.value} tone="target" />
                   ))}
+                  <Level label="Stop" value={alert.stop} tone="stop" />
                 </div>
               )}
 

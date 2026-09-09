@@ -49,12 +49,11 @@ def test_cycle_telegram_template_is_portuguese_spaced_and_paper_only():
         },
         "payload": {"detail": "Ordem virtual gerada."},
     })
-    assert "HAGMARTK SHADOW ? TEORIA DOS CICLOS V111" in text
-    assert "ORDEM PAPER GERADA" in text
-    assert "Tempo gr?fico: <b>M15</b>" in text
+    assert "HAGMARTK TEORIA DOS CICLOS" in text
+    assert "OPORTUNIDADE EM OBSERVAÇÃO" in text
+    assert "<b>Gráfico:</b> M15" in text
     assert "Alvo 1" in text and "Alvo 2" in text and "Alvo 3" in text
-    assert "Ordem real: <b>N?O</b>" in text
-    assert "Probabilidade de alvo: <b>n?o calibrada</b>" in text
+    assert "Nenhuma ordem real foi enviada." in text
 
 
 def test_cycle_status_endpoint_is_safe_when_not_started(monkeypatch):

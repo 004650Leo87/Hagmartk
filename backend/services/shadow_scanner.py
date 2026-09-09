@@ -235,6 +235,10 @@ class ShadowScannerManager:
                     self.store.save_scanner_state(st)
 
     def refresh_provider_support(self, adapter: Any) -> tuple[List[str], List[str]]:
+        try:
+            self.publisher.telegram_notifier.set_market_adapter(adapter)
+        except Exception:
+            pass
         rows = adapter.get_symbols()
         row_map = {
             str(item.get("symbol") or item.get("name") or "").upper().strip(): dict(item)

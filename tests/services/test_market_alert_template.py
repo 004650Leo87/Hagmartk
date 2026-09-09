@@ -52,3 +52,33 @@ def test_orb_template_uses_same_standard_and_2r_target():
     text = format_telegram_alert(alert)
     assert "Alvo 2R" in text
     assert "Nenhuma ordem real" in text
+
+
+def test_operational_levels_are_always_entry_targets_then_stop():
+    alerts = [
+        build_orb_alert("ENTRY_FILLED", {
+            "symbol": "ETHUSDT", "event_time": "2026-09-08T20:45:00+00:00",
+            "direction": "LONG", "entry": "4310.2", "stop": "4285.3", "target": "4360.0",
+        }),
+        build_cycle_alert({
+            "event_type": "LIMIT_FILLED", "symbol": "XAUUSD", "timeframe": "M5",
+            "direction": "BUY", "event_time": "2026-09-08T20:42:00+00:00",
+            "levels": {"entry": 3620.15, "stop": 3612.4, "target_1": 3627.9,
+                       "target_2": 3635.65, "target_3": 3643.4}, "payload": {},
+        }),
+    ]
+    for alert in alerts:
+        text = format_telegram_alert(alert)
+        assert text.index("Entrada:") < text.index("Alvo") < text.index("Stop:")
+
+
+def test_cycle_technical_engine_detail_is_not_sent_to_telegram():
+    alert = build_cycle_alert({
+        "event_type": "LIMIT_FILLED", "symbol": "BTCUSDT", "timeframe": "M5",
+        "direction": "BUY", "event_time": "2026-09-08T20:42:00+00:00",
+        "levels": {"entry": 100, "stop": 95, "target_1": 105, "target_2": 110, "target_3": 115},
+        "payload": {"detail": "O preço real Bid/Ask alcançou a entrada virtual e ativou a posição PAPER."},
+    })
+    text = format_telegram_alert(alert)
+    assert "preço real" not in text.lower()
+    assert "entrada virtual" not in text.lower()

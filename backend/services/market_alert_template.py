@@ -228,14 +228,12 @@ def format_telegram_alert(alert: Dict[str, Any]) -> str:
         lines.extend(["", "🎯 <b>Níveis da operação</b>"])
         if alert.get("entry"):
             lines.append(f"Entrada: <code>{alert['entry']}</code>")
-        if alert.get("stop"):
-            lines.append(f"🛑 Stop: <code>{alert['stop']}</code>")
         for target in alert.get("targets") or []:
             lines.append(f"🎯 {target['label']}: <code>{target['value']}</code>")
+        if alert.get("stop"):
+            lines.append(f"🛑 Stop: <code>{alert['stop']}</code>")
     if alert.get("result"):
         lines.extend(["", f"📊 <b>Resultado:</b> {alert['result']}"])
-    if alert.get("note"):
-        lines.append(f"ℹ️ {alert['note']}")
     lines.extend([
         "",
         "🧪 <b>Acompanhamento:</b> Shadow / Simulação",
@@ -249,6 +247,7 @@ def dashboard_alert(alert: Dict[str, Any]) -> Dict[str, Any]:
         "strategy": alert["strategy_name"],
         "strategy_key": alert["strategy_key"],
         "event_code": alert["event_code"],
+        "event_kind": alert["event_kind"],
         "event_label": alert["event_label"],
         "event_icon": alert["event_icon"],
         "symbol": alert["symbol"],

@@ -1,0 +1,100 @@
+:root {
+  --ev-bg: #070b0e;
+  --ev-panel: #0d1418;
+  --ev-panel-2: #10191f;
+  --ev-border: #27323a;
+  --ev-muted: #8d979f;
+  --ev-text: #eef2f4;
+  --ev-gold: #d6aa4d;
+  --ev-green: #2bd985;
+  --ev-red: #ff555b;
+  --ev-blue: #45a7ff;
+}
+
+.ev-app {
+  min-height: 100vh;
+  background: radial-gradient(circle at 50% -30%, #182126 0, #090e11 38%, #05080a 100%);
+  color: var(--ev-text);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.ev-app * { box-sizing: border-box; }
+button, input { font: inherit; }
+.ev-header {
+  min-height: 86px;
+  padding: 10px 28px;
+  border-bottom: 1px solid #242d33;
+  display: grid;
+  grid-template-columns: minmax(330px, 1fr) auto minmax(220px, 0.7fr);
+  align-items: center;
+  gap: 22px;
+  background: linear-gradient(180deg, rgba(11,17,20,.98), rgba(8,13,16,.94));
+}
+.ev-brand { display: flex; align-items: center; gap: 13px; min-width: 0; }
+.ev-hm-logo { width: 68px; height: 68px; flex: 0 0 auto; filter: drop-shadow(0 5px 12px rgba(0,0,0,.5)); }
+.ev-hm-logo.small { width: 38px; height: 38px; }
+.ev-brand-name { color: #d8b05a; font-family: Georgia, serif; letter-spacing: .16em; font-size: 28px; line-height: 1; }
+.ev-brand-sub { color: #b4bbc0; font-size: 10px; letter-spacing: .42em; margin-top: 6px; }
+.ev-brand-tag { color: #717b83; font-size: 9px; letter-spacing: .31em; margin-top: 3px; }
+.ev-topnav { display: flex; align-items: stretch; gap: 8px; height: 62px; }
+.ev-topnav button { border: 0; border-bottom: 3px solid transparent; background: transparent; color: #a9b2b8; padding: 0 18px; cursor: pointer; }
+.ev-topnav button:hover { color: #f0f3f4; }
+.ev-topnav button.active { color: #f0d27b; border-bottom-color: var(--ev-gold); }
+.ev-topnav button span { margin-left: 7px; }
+.ev-header-motto { justify-self: end; border-left: 2px solid #8d6e30; padding-left: 24px; color: #9aa2a8; letter-spacing: .25em; font-size: 11px; line-height: 1.55; }
+.ev-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(270px, 24%) minmax(600px, 1fr) minmax(270px, 23%);
+  gap: 10px;
+  padding: 10px;
+}
+.ev-panel {
+  background: linear-gradient(180deg, rgba(15,23,28,.98), rgba(10,16,19,.98));
+  border: 1px solid var(--ev-border);
+  border-radius: 12px;
+  box-shadow: 0 14px 32px rgba(0,0,0,.18);
+}
+.ev-occurrences, .ev-details { min-height: 0; }
+.ev-occurrences { padding: 12px; display: flex; flex-direction: column; }
+.ev-panel-title-row { display: flex; gap: 10px; justify-content: space-between; align-items: flex-start; }
+.ev-panel-title-row h2, .ev-details h2 { margin: 0; font-size: 17px; }
+.ev-panel-title-row p { margin: 3px 0 0; color: var(--ev-muted); font-size: 11px; }
+.ev-live { color: var(--ev-green); font-size: 10px; font-weight: 800; white-space: nowrap; }
+.ev-live.offline, .ev-footer .offline { color: var(--ev-red); }
+.ev-filter-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 12px; }
+.ev-filter-row button { min-width: 0; border: 1px solid #344049; border-radius: 7px; background: #0a1014; color: #c3cbd0; padding: 8px 4px; font-size: 10px; cursor: pointer; }
+.ev-filter-row button.active { background: linear-gradient(180deg,#d9b35c,#a67724); color: #111; border-color: #e2bf70; font-weight: 800; }
+.ev-filter-row b { margin-left: 4px; opacity: .75; }
+.ev-search-row { margin-top: 9px; display: flex; align-items: center; gap: 7px; border: 1px solid #2a353d; border-radius: 8px; background: #080d10; padding: 7px 10px; }
+.ev-search-row span { color: #6f7d87; font-size: 16px; }
+.ev-search-row input { width: 100%; border: 0; outline: 0; background: transparent; color: #eef2f4; font-size: 11px; }
+.ev-feed { margin-top: 8px; min-height: 0; overflow: auto; scrollbar-width: thin; scrollbar-color: #37424a transparent; }
+.ev-feed-row { width: 100%; min-height: 61px; display: grid; grid-template-columns: 42px minmax(0,1fr) 62px 78px; align-items: center; gap: 7px; border: 1px solid transparent; border-bottom-color: #1d272d; background: transparent; color: #d8dee2; padding: 7px 7px; text-align: left; cursor: pointer; }
+.ev-feed-row:hover { background: #111b21; }
+.ev-feed-row.selected { border-color: #d0a748; border-radius: 8px; background: radial-gradient(circle at 20% 30%, rgba(208,167,72,.14), rgba(14,22,27,.7)); box-shadow: inset 0 0 18px rgba(205,159,54,.08); }
+.ev-feed-time { color: #9fa9b0; font-size: 10px; align-self: start; padding-top: 3px; }
+.ev-feed-main { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.ev-feed-main strong { font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ev-feed-main span { font-size: 11px; color: #eef1f3; font-weight: 700; }
+.ev-direction { font-size: 10px; font-weight: 900; text-align: center; }
+.ev-direction.buy, .positive { color: var(--ev-green) !important; }
+.ev-direction.sell, .negative { color: var(--ev-red) !important; }
+.ev-chip { display: inline-flex; justify-content: center; align-items: center; min-height: 25px; padding: 3px 7px; border-radius: 7px; font-style: normal; font-size: 9px; font-weight: 900; white-space: nowrap; }
+.ev-chip.success { color: #83f3b8; background: #0b542f; border: 1px solid #137a45; }
+.ev-chip.danger { color: #ffb2b2; background: #411717; border: 1px solid #9b3434; }
+.ev-chip.active { color: #99d3ff; background: #0d3555; border: 1px solid #1e6ea8; }
+.ev-chip.neutral { color: #c6cdd1; background: #222c32; border: 1px solid #39454d; }
+.ev-empty-feed { padding: 24px 8px; color: #707b82; text-align: center; font-size: 11px; }
+.ev-occurrences blockquote { margin: auto 5px 0; padding-top: 12px; border-top: 1px solid #202a30; color: #78838a; font-family: Georgia, serif; font-size: 11px; line-height: 1.45; font-style: italic; }
+.ev-occurrences blockquote small { display: block; margin-top: 5px; font-family: Inter,sans-serif; letter-spacing: .18em; font-style: normal; }
+
+.ev-hm-logo {
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid rgba(213,168,71,.32);
+}

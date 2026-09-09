@@ -7,10 +7,11 @@ export default function LeftNavigation({
   onToggleExpand,
 }) {
   const NAV_ITEMS = [
-    { id: 'chart', label: 'Gráfico / Cockpit', icon: '📊' },
+    { id: 'evidence', label: 'Painel de Evidências', icon: '▥' },
+    { id: 'chart', label: 'Gráfico Completo', icon: '📊' },
     { id: 'watchlist', label: 'Mercado / Ativos', icon: '⌁' },
-    { id: 'shadow', label: 'Shadow Monitor (39)', icon: '🛡️' },
-    { id: 'strategies', label: 'Estratégia HDF', icon: '◇' },
+    { id: 'shadow', label: 'Shadow Monitor', icon: '🛡️' },
+    { id: 'strategies', label: 'Estratégias', icon: '◇' },
   ];
 
   return (

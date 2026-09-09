@@ -30,15 +30,12 @@ _SAO_PAULO = ZoneInfo("America/Sao_Paulo")
 _OPENING_POLICY_KEY = "__GLOBAL_WEEKLY_OPEN__"
 
 _PUBLISH_TYPES = {
-    "EXPANSION_CONFIRMED",
     "LIMIT_FILLED",
     "PARTIAL_EXECUTED",
     "BREAKEVEN_APPLIED",
     "TARGET_LEVEL_REACHED",
     "TAKE_PROFIT",
     "STOP_LOSS",
-    "POSITION_CLOSED",
-    "PULLBACK_MISSED",
 }
 
 
@@ -221,10 +218,19 @@ class CycleTheoryProspectiveScanner:
         if entry and s.super_size and direction:
             sign = 1 if direction == 1 else -1
             targets = [entry + sign * s.super_size * i for i in (1, 2, 3)]
+        c1_mid = 0.0
+        if s.exp_level and direction == 1:
+            c1_mid = (s.ch_high + s.exp_level) / 2.0
+        elif s.exp_level and direction == -1:
+            c1_mid = (s.ch_low + s.exp_level) / 2.0
         return {
             "channel_high": s.ch_high, "channel_low": s.ch_low, "expansion": s.exp_level,
             "entry": entry, "stop": stop,
             "target_1": targets[0], "target_2": targets[1], "target_3": targets[2],
+            "c1_mid": c1_mid,
+            "ref_time_start": s.ref_time_start.isoformat() if s.ref_time_start else None,
+            "is_split_active": bool(s.is_split_active),
+            "mid_line50": s.mid_line50,
         }
 
     def _direction(self, context: CycleRuntimeContext, payload: dict[str, Any]) -> str:
@@ -245,6 +251,15 @@ class CycleTheoryProspectiveScanner:
         levels = self._levels(context)
         clean_payload = dict(payload)
         clean_payload.setdefault("detail", self._human_detail(event_type, payload))
+        ref_start = context.strategy.sm.state.ref_time_start
+        operation_seed = json.dumps({
+            "candidate": CYCLE_THEORY_V111_BASELINE.candidate_id,
+            "symbol": context.symbol,
+            "timeframe": context.timeframe,
+            "ref_time_start": ref_start.isoformat() if ref_start else None,
+        }, sort_keys=True, default=str)
+        operation_id = hashlib.sha256(operation_seed.encode("utf-8")).hexdigest()
+        clean_payload.setdefault("operation_id", operation_id)
         identity = json.dumps({
             "candidate": CYCLE_THEORY_V111_BASELINE.candidate_id,
             "symbol": context.symbol, "timeframe": context.timeframe,
@@ -343,6 +358,7 @@ class CycleTheoryProspectiveScanner:
         self._save_runtime(context)
 
     def scan_once(self, adapter: Any) -> dict[str, Any]:
+        self.notifier.set_market_adapter(adapter)
         if self.clock is None:
             self.clock = CycleTheoryBrokerClock.from_runtime_scope(adapter.get_runtime_scope())
         if not self.symbol_rows:

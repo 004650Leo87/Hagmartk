@@ -186,6 +186,10 @@ class OrbProspectiveScanner:
             "event_time": event_time.isoformat(),
             "paper_only": True,
             "real_order_execution_enabled": False,
+            "range_high": row.get("range_high"),
+            "range_low": row.get("range_low"),
+            "t0": row.get("t0"),
+            "signal_time": row.get("signal_time"),
             **payload,
         }
         inserted = self.store.append_event(
@@ -586,6 +590,7 @@ class OrbProspectiveScanner:
         if self._thread is not None and self._thread.is_alive():
             return
         self.adapter = adapter
+        self.notifier.set_market_adapter(adapter)
         self.refresh_universe()
         self._reconcile_restart_gaps()
         self.capture.start()
