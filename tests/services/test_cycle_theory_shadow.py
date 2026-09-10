@@ -91,3 +91,65 @@ def test_binance_context_uses_exchange_utc_clock_not_mt5_server_clock(tmp_path):
     context = scanner._new_context(row, "M5")
     assert context.clock is not None
     assert context.clock.offset_hours == 0.0
+
+
+def test_cycle_live_universe_defaults_to_curated_fidelity_symbols(monkeypatch, tmp_path):
+    from backend.services.cycle_theory_shadow import CycleTheoryProspectiveScanner
+    monkeypatch.delenv("HAGMARTK_CYCLE_LIVE_SYMBOLS", raising=False)
+    class Adapter:
+        def get_symbols(self):
+            return [
+                {"symbol": "EURUSD", "category": "FOREX"},
+                {"symbol": "XAUUSD", "category": "METALS"},
+                {"symbol": "BTCUSDT", "category": "CRYPTO", "provider": "BINANCE_USDM_FUTURES"},
+                {"symbol": "NIGHTUSDT", "category": "CRYPTO", "provider": "BINANCE_USDM_FUTURES"},
+            ]
+    scanner = CycleTheoryProspectiveScanner(store=CycleTheoryShadowStore(str(tmp_path / "curated.db")))
+    assert scanner.refresh_universe(Adapter()) == 2
+    assert set(scanner.symbol_rows) == {"EURUSD", "XAUUSD"}
+    assert scanner.provider_catalog_size == 4
+
+
+def test_cycle_live_universe_can_be_explicitly_overridden(monkeypatch, tmp_path):
+    from backend.services.cycle_theory_shadow import CycleTheoryProspectiveScanner
+    monkeypatch.setenv("HAGMARTK_CYCLE_LIVE_SYMBOLS", "EURUSD,BTCUSDT")
+    class Adapter:
+        def get_symbols(self):
+            return [
+                {"symbol": "EURUSD", "category": "FOREX"},
+                {"symbol": "BTCUSDT", "category": "CRYPTO", "provider": "BINANCE_USDM_FUTURES"},
+                {"symbol": "NIGHTUSDT", "category": "CRYPTO", "provider": "BINANCE_USDM_FUTURES"},
+            ]
+    scanner = CycleTheoryProspectiveScanner(store=CycleTheoryShadowStore(str(tmp_path / "override.db")))
+    assert scanner.refresh_universe(Adapter()) == 2
+    assert set(scanner.symbol_rows) == {"EURUSD", "BTCUSDT"}
+
+
+def test_cycle_recovery_event_is_persisted_but_not_notified(monkeypatch, tmp_path):
+    from datetime import timezone
+    from backend.services.cycle_theory_shadow import CycleTheoryProspectiveScanner
+    from backend.strategies.cycle_theory.time_domain import CycleTheoryBrokerClock
+    class FakeNotifier:
+        def __init__(self): self.calls = []
+        def notify_cycle_async(self, event): self.calls.append(event); return True
+    notifier = FakeNotifier()
+    scanner = CycleTheoryProspectiveScanner(store=CycleTheoryShadowStore(str(tmp_path / "replay.db")), notifier=notifier)
+    scanner.clock = CycleTheoryBrokerClock(offset_hours=0.0)
+    row = {"symbol":"EURUSD","category":"FOREX","point":0.00001,"digits":5,"volume_step":0.01,"volume_min":0.01,"volume_max":100.0}
+    context = scanner._new_context(row, "M5")
+    inserted = scanner._record_event(context, "LIMIT_FILLED", {"ticket":1}, datetime(2026,9,9,20,0,tzinfo=timezone.utc), publish_notification=False)
+    assert inserted is True
+    assert notifier.calls == []
+
+
+def test_cycle_telegram_is_fail_closed_during_fidelity_review(monkeypatch, tmp_path):
+    from backend.services.cycle_theory_shadow import CycleTheoryProspectiveScanner
+    monkeypatch.delenv("HAGMARTK_CYCLE_TELEGRAM_ENABLED", raising=False)
+    class FakeNotifier:
+        def __init__(self): self.calls = []
+        def notify_cycle_async(self, event): self.calls.append(event); return True
+        def status(self): return {"ready": True}
+    notifier = FakeNotifier()
+    scanner = CycleTheoryProspectiveScanner(store=CycleTheoryShadowStore(str(tmp_path / "quarantine.db")), notifier=notifier)
+    assert scanner.status()["telegram_publish_enabled"] is False
+    assert scanner.status()["telegram_publish_policy"] == "FAIL_CLOSED_DURING_FIDELITY_REVIEW"

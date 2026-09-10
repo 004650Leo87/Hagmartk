@@ -141,3 +141,40 @@ def test_bot_api_retries_after_429(monkeypatch, tmp_path):
     assert response.status_code == 200
     assert len(calls) == 2
     assert 2.0 in sleeps
+
+
+def test_cycle_orphan_update_is_suppressed(monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr(notifier_module.requests, "post", lambda url, **kwargs: calls.append((url, kwargs)) or FakeResponse(5001))
+    store = TelegramThreadStore(str(tmp_path / "orphan.db"))
+    notifier = TelegramNotifier(
+        TelegramConfig(True, "BOT_API", bot_token="secret", chat_id="123"),
+        thread_store=store,
+    )
+    notifier._safe_send_cycle(_cycle_event("TARGET_LEVEL_REACHED", "never-opened"))
+    assert calls == []
+    assert store.get("TC:never-opened") is None
+
+
+def test_publication_log_reserves_once_and_tracks_status(tmp_path):
+    store = TelegramThreadStore(str(tmp_path / "publication-log.db"))
+    assert store.reserve_publication(
+        "ORB", "sig-a", "ORB:session-a", "BTCUSDT", 98.0, "QUALIFIED_FOR_PUBLICATION"
+    ) is True
+    assert store.reserve_publication(
+        "ORB", "sig-a", "ORB:session-a", "BTCUSDT", 98.0, "QUALIFIED_FOR_PUBLICATION"
+    ) is False
+    rows = store.recent_publication_activity("ORB", "2000-01-01T00:00:00+00:00")
+    assert len(rows) == 1
+    assert rows[0]["status"] == "RESERVED"
+    store.mark_publication_status("ORB", "sig-a", "PUBLISHED")
+    rows = store.recent_publication_activity("ORB", "2000-01-01T00:00:00+00:00")
+    assert rows[0]["status"] == "PUBLISHED"
+
+
+def test_suppressed_or_failed_publication_does_not_consume_budget(tmp_path):
+    store = TelegramThreadStore(str(tmp_path / "publication-filter.db"))
+    store.record_suppression("ORB", "sig-s", "ORB:s", "LOWUSDT", 20.0, "LOW_QUALITY")
+    store.reserve_publication("ORB", "sig-f", "ORB:f", "FAILUSDT", 99.0, "QUALIFIED")
+    store.mark_publication_status("ORB", "sig-f", "FAILED")
+    assert store.recent_publication_activity("ORB", "2000-01-01T00:00:00+00:00") == []

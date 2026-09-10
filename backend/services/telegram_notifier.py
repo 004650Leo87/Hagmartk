@@ -9,11 +9,18 @@ import requests
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict
 
 from backend.domain.shadow_models import ShadowEvent, ShadowEventType
 from backend.services.market_alert_image import render_market_alert_chart
 from backend.services.telegram_thread_store import TelegramThreadStore
+from backend.services.telegram_publication_policy import (
+    evaluate_dvp_root, evaluate_orb_root,
+)
+from backend.services.orb_publication_policy import (
+    OrbPublicationConfig, evaluate_orb_publication,
+)
 from backend.services.market_alert_template import (
     build_cycle_alert, build_dvp_alert, build_orb_alert, format_telegram_alert,
 )
@@ -24,16 +31,6 @@ _TELEGRAM_EXECUTOR = ThreadPoolExecutor(max_workers=1, thread_name_prefix="Teleg
 _TELEGRAM_RATE_LOCK = threading.Lock()
 _TELEGRAM_LAST_SEND = 0.0
 _TELEGRAM_MIN_INTERVAL = 1.05
-
-_ALLOWED_EVENT_TYPES = {
-    ShadowEventType.SETUP_ARMED,
-    ShadowEventType.ENTRY_ACTIVATED,
-    ShadowEventType.MILESTONE_1R,
-    ShadowEventType.TARGET_REACHED,
-    ShadowEventType.STOP_REACHED,
-    ShadowEventType.SETUP_EXPIRED,
-    ShadowEventType.SETUP_INVALIDATED,
-}
 
 
 def _env_enabled(name: str, default: str = "0") -> bool:
@@ -67,6 +64,7 @@ class TelegramNotifier:
         self.config = config or TelegramConfig.from_environment()
         self.thread_store = thread_store or TelegramThreadStore()
         self.market_adapter = None
+        self.orb_publication_config = OrbPublicationConfig.from_environment()
 
     def status(self) -> Dict[str, Any]:
         configured = self.config.mode in {"WEBHOOK", "BOT_API"}
@@ -95,83 +93,6 @@ class TelegramNotifier:
                 retry_after = max(retry_after, 1.0)
             time.sleep(retry_after)
         return response
-
-    def notify_async(self, event_type: ShadowEventType, event: ShadowEvent, details: Dict[str, Any]) -> bool:
-        if event_type not in _ALLOWED_EVENT_TYPES or not self.status()["ready"]:
-            return False
-        thread = threading.Thread(
-            target=self._safe_send_event,
-            args=(event_type, event, dict(details)),
-            daemon=True,
-            name=f"TelegramNotify-{event.event_id}",
-        )
-        thread.start()
-        return True
-
-    def _safe_send_event(self, event_type: ShadowEventType, event: ShadowEvent, details: Dict[str, Any]) -> None:
-        try:
-            self._send_payload(format_telegram_alert(build_dvp_alert(event_type, event, details)), event_type, event.event_id)
-        except Exception as exc:
-            _logger.warning(
-                "[TELEGRAM] delivery failed event_id=%s type=%s error=%s",
-                event.event_id,
-                event_type.value,
-                type(exc).__name__,
-            )
-
-    def notify_cycle_async(self, event: Dict[str, Any]) -> bool:
-        if not self.status()["ready"]:
-            return False
-        event_id = str(event.get("event_id") or "cycle_theory_event")
-        thread = threading.Thread(
-            target=self._safe_send_cycle,
-            args=(dict(event),),
-            daemon=True,
-            name=f"TelegramCycle-{event_id}",
-        )
-        thread.start()
-        return True
-
-    def _safe_send_cycle(self, event: Dict[str, Any]) -> None:
-        try:
-            self._send_payload(
-                format_telegram_alert(build_cycle_alert(event)),
-                str(event.get("event_type") or "CYCLE_EVENT"),
-                str(event.get("event_id") or "cycle_theory_event"),
-                source="HAGMARTK_CYCLE_THEORY_SHADOW",
-            )
-        except Exception as exc:
-            _logger.warning(
-                "[TELEGRAM] Cycle Theory delivery failed event_id=%s error=%s",
-                event.get("event_id"), type(exc).__name__,
-            )
-
-    def notify_orb_async(self, event_type: str, event: Dict[str, Any]) -> bool:
-        if not self.status()["ready"]:
-            return False
-        event_id = str(event.get("signal_id") or event.get("session_id") or "orb_event")
-        thread = threading.Thread(
-            target=self._safe_send_orb,
-            args=(str(event_type), dict(event)),
-            daemon=True,
-            name=f"TelegramORB-{event_id}",
-        )
-        thread.start()
-        return True
-
-    def _safe_send_orb(self, event_type: str, event: Dict[str, Any]) -> None:
-        try:
-            self._send_payload(
-                format_telegram_alert(build_orb_alert(event_type, event)),
-                event_type,
-                str(event.get("signal_id") or event.get("session_id") or "orb_event"),
-                source="HAGMARTK_ORB_SHADOW",
-            )
-        except Exception as exc:
-            _logger.warning(
-                "[TELEGRAM] ORB delivery failed event=%s error=%s",
-                event_type, type(exc).__name__,
-            )
 
     @classmethod
     def _format_orb_message(cls, event_type: str, event: Dict[str, Any]) -> str:
@@ -481,7 +402,10 @@ class TelegramNotifier:
         closed: bool = False,
     ) -> None:
         root_row = self.thread_store.get(operation_key)
-        reply_id = None if root else (root_row or {}).get("root_message_id")
+        if not root and root_row is None:
+            _logger.info("[TELEGRAM] suppressed orphan update operation=%s event=%s", operation_key, event_id)
+            return
+        reply_id = None if root else root_row.get("root_message_id")
         image_png = None
         if root:
             candles = self._load_candles(alert)
@@ -504,6 +428,8 @@ class TelegramNotifier:
                 message_id,
                 event_id,
             )
+            if source == "HAGMARTK_ORB_SHADOW":
+                self.thread_store.mark_publication_status("ORB", event_id, "PUBLISHED")
         if closed and root_row:
             self.thread_store.close(operation_key)
 
@@ -593,6 +519,9 @@ class TelegramNotifier:
                 closed,
             )
         except Exception as exc:
+            if event_type == "ENTRY_FILLED":
+                signal_id = str(event.get("signal_id") or "orb_event")
+                self.thread_store.mark_publication_status("ORB", signal_id, "FAILED")
             _logger.warning(
                 "[TELEGRAM] ORB delivery failed event=%s error=%s",
                 event_type,
@@ -708,6 +637,11 @@ class TelegramNotifier:
         }
         if event_type not in allowed or not self.status()["ready"]:
             return False
+        if event_type == ShadowEventType.ENTRY_ACTIVATED:
+            decision = evaluate_dvp_root(event)
+            if not decision.allowed:
+                _logger.info("[TELEGRAM] DVP root suppressed event=%s reason=%s", event.event_id, decision.reason)
+                return False
         _TELEGRAM_EXECUTOR.submit(self._safe_send_event, event_type, event, dict(details))
         return True
 
@@ -721,6 +655,40 @@ class TelegramNotifier:
         allowed = {"ENTRY_FILLED", "EXIT_FILLED", "EXIT_UNRESOLVED"}
         if event_type not in allowed or not self.status()["ready"]:
             return False
+        if event_type == "ENTRY_FILLED":
+            signal_id = str(event.get("signal_id") or "orb_event")
+            session_id = str(event.get("session_id") or signal_id)
+            operation_key = f"ORB:{session_id}"
+            symbol = str(event.get("symbol") or "").upper()
+            root_decision = evaluate_orb_root(event)
+            if not root_decision.allowed:
+                self.thread_store.record_suppression(
+                    "ORB", signal_id, operation_key, symbol, 0.0, root_decision.reason,
+                )
+                _logger.info("[TELEGRAM] ORB root suppressed signal=%s reason=%s", signal_id, root_decision.reason)
+                return False
+            now = datetime.now(timezone.utc)
+            since = now - timedelta(minutes=self.orb_publication_config.lookback_minutes)
+            recent = self.thread_store.recent_publication_activity("ORB", since.isoformat())
+            decision = evaluate_orb_publication(
+                event, recent, now=now, config=self.orb_publication_config,
+            )
+            if not decision.allowed:
+                self.thread_store.record_suppression(
+                    "ORB", signal_id, operation_key, symbol, decision.score, decision.reason,
+                )
+                _logger.info(
+                    "[TELEGRAM] ORB publication suppressed signal=%s reason=%s score=%.2f",
+                    signal_id, decision.reason, decision.score,
+                )
+                return False
+            if not self.thread_store.reserve_publication(
+                "ORB", signal_id, operation_key, symbol, decision.score, decision.reason,
+            ):
+                _logger.info("[TELEGRAM] ORB duplicate reservation signal=%s", signal_id)
+                return False
+            event = dict(event)
+            event["publication_score"] = decision.score
         _TELEGRAM_EXECUTOR.submit(self._safe_send_orb, str(event_type), dict(event))
         return True
 

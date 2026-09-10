@@ -127,6 +127,35 @@ def _levels(alert: dict[str, Any]) -> list[tuple[str, float, str]]:
     return rows
 
 
+def _resolve_label_tops(
+    anchors: list[float], top: float, bottom: float,
+    height: float = 28.0, gap: float = 8.0,
+) -> list[float]:
+    if not anchors:
+        return []
+    indexed = sorted(enumerate(anchors), key=lambda item: item[1])
+    resolved: list[tuple[int, float]] = []
+    cursor = top
+    for index, anchor in indexed:
+        desired = max(top, min(anchor - height / 2.0, bottom - height))
+        placed = max(desired, cursor)
+        resolved.append((index, placed))
+        cursor = placed + height + gap
+    overflow = (resolved[-1][1] + height) - bottom
+    if overflow > 0:
+        resolved = [(index, value - overflow) for index, value in resolved]
+        for pos in range(len(resolved) - 2, -1, -1):
+            max_top = resolved[pos + 1][1] - height - gap
+            index, value = resolved[pos]
+            resolved[pos] = (index, min(value, max_top))
+        minimum = min(value for _, value in resolved)
+        if minimum < top:
+            shift = top - minimum
+            resolved = [(index, value + shift) for index, value in resolved]
+    by_index = {index: value for index, value in resolved}
+    return [by_index[index] for index in range(len(anchors))]
+
+
 def render_market_alert_chart(
     alert: dict[str, Any],
     candles_rows: Iterable[dict[str, Any]],
@@ -140,7 +169,7 @@ def render_market_alert_chart(
     image = Image.new("RGB", (width, height), _BG)
     draw = ImageDraw.Draw(image)
     chart_left, chart_top = 62, 112
-    chart_right, chart_bottom = 1110, 630
+    chart_right, chart_bottom = 1035, 630
     chart_w = chart_right - chart_left
     chart_h = chart_bottom - chart_top
 
@@ -215,20 +244,21 @@ def render_market_alert_chart(
             right_x = x(event_idx)
             draw.rectangle((left_x, y(ch_high), right_x, y(ch_low)), fill="#111d25", outline="#c5ced7", width=2)
             mid_y = (y(ch_high) + y(ch_low)) / 2
-            draw.text((left_x + 12, mid_y - 24), "ZONA NEUTRA", fill=_TEXT, font=_font(15, True))
-            draw.text((left_x + 12, mid_y + 2), "CANAL NEUTRO", fill=_MUTED, font=_font(13))
-        c1_mid = _num(evidence.get("c1_mid"))
-        if c1_mid:
-            draw.line((x(max(0, ref_idx)), y(c1_mid), x(event_idx), y(c1_mid)), fill=_GOLD, width=2)
-            draw.text((x(max(0, ref_idx)) + 6, y(c1_mid) - 24), "C1", fill=_GOLD, font=_font(16, True))
+            draw.text((left_x + 12, mid_y - 24), "CANAL V111 (4 BARRAS)", fill=_TEXT, font=_font(15, True))
+            draw.text((left_x + 12, mid_y + 2), "Referência interna do EA V111", fill=_MUTED, font=_font(13))
+        expansion = _num(evidence.get("expansion"))
+        if ch_high and ch_low and expansion:
+            c1_top, c1_bottom = (expansion, ch_high) if expansion > ch_high else (ch_low, expansion)
+            draw.rectangle((left_x, y(c1_top), right_x, y(c1_bottom)), outline=_GOLD, width=2)
+            draw.text((left_x + 12, (y(c1_top) + y(c1_bottom))/2 - 8), "FAIXA DE EXPANSÃO V111", fill=_GOLD, font=_font(15, True))
         split_mid = _num(evidence.get("mid_line50"))
         if split_mid and evidence.get("is_split_active"):
             draw.line((x(max(0, ref_idx)), y(split_mid), x(event_idx), y(split_mid)), fill=_YELLOW, width=1)
-            draw.text((x(event_idx) - 110, y(split_mid) - 20), "DIVISÃO 50%", fill=_YELLOW, font=_font(12, True))
+            draw.text((x(event_idx) - 110, y(split_mid) - 20), "DIVISÃO 50% V111", fill=_YELLOW, font=_font(12, True))
         expansion = _num(evidence.get("expansion"))
         if expansion:
             draw.line((x(max(0, event_idx - 4)), y(expansion), chart_right, y(expansion)), fill=_GOLD, width=3)
-            draw.text((chart_right - 170, y(expansion) - 24), "EXPANSÃO", fill=_GOLD, font=_font(14, True))
+            draw.text((chart_right - 170, y(expansion) - 24), "EXPANSÃO V111", fill=_GOLD, font=_font(14, True))
     if strategy_key == "ORB":
         range_high = _num(evidence.get("range_high"))
         range_low = _num(evidence.get("range_low"))
@@ -237,12 +267,22 @@ def render_market_alert_chart(
         if range_high and range_low:
             left_x = x(t0_idx if t0_idx >= 0 else max(0, signal_idx - 12))
             right_x = x(signal_idx)
-            draw.rectangle((left_x, y(range_high), right_x, y(range_low)), fill="#0c2940", outline=_BLUE, width=2)
-            draw.text((left_x + 12, (y(range_high) + y(range_low))/2 - 8), "OPENING RANGE", fill="#91ceff", font=_font(15, True))
+            top_y, bottom_y = sorted((y(range_high), y(range_low)))
+            draw.rectangle((left_x, top_y, right_x, bottom_y), fill="#0c2940", outline=_BLUE, width=2)
+            tag_font = _font(13, True)
+            tag_text = "OPENING RANGE"
+            tag_box = draw.textbbox((0, 0), tag_text, font=tag_font)
+            tag_w = tag_box[2] - tag_box[0]
+            tag_y = max(chart_top + 6, min(top_y + 8, chart_bottom - 27))
+            draw.rounded_rectangle((left_x + 8, tag_y, left_x + tag_w + 24, tag_y + 23), radius=5, fill="#0a1a25")
+            draw.text((left_x + 16, tag_y + 4), tag_text, fill="#91ceff", font=tag_font)
         if 0 <= signal_idx < len(candles):
             xx, yy = x(signal_idx), y(candles[signal_idx]["high"])
-            draw.line((xx - 48, yy - 36, xx, yy - 3), fill=_WHITE, width=2)
-            draw.text((xx - 120, yy - 60), "ROMPIMENTO", fill=_WHITE, font=_font(13, True))
+            draw.line((xx - 38, yy - 28, xx, yy - 3), fill=_WHITE, width=2)
+            tag_x = min(max(chart_left + 8, xx - 118), chart_right - 128)
+            tag_y = max(chart_top + 8, yy - 54)
+            draw.rounded_rectangle((tag_x, tag_y, tag_x + 118, tag_y + 23), radius=5, fill="#0a131b")
+            draw.text((tag_x + 8, tag_y + 4), "ROMPIMENTO", fill=_WHITE, font=_font(12, True))
 
     if strategy_key == "DVP":
         p1 = _num(evidence.get("pivot_1_price"))
@@ -256,15 +296,25 @@ def render_market_alert_chart(
             xx, yy = x(event_idx), y(candles[event_idx]["high"])
             draw.line((xx - 48, yy - 34, xx, yy - 2), fill=_WHITE, width=2)
             draw.text((xx - 150, yy - 58), "CANDLE GATILHO", fill=_WHITE, font=_font(13, True))
-    for label, value, color in levels:
-        yy = y(value)
+    level_anchors = [y(value) for _, value, _ in levels]
+    level_tops = _resolve_label_tops(
+        level_anchors, chart_top + 8, chart_bottom - 8, height=28.0, gap=8.0,
+    )
+    rail_left, rail_right = 1118, 1264
+    level_font = _font(13, True)
+    for idx, (label, value, color) in enumerate(levels):
+        anchor_y = level_anchors[idx]
+        top_y = level_tops[idx]
         left = x(max(0, event_idx - 4))
-        draw.line((left, yy, chart_right, yy), fill=color, width=2)
+        draw.line((left, anchor_y, chart_right, anchor_y), fill=color, width=2)
+        center_y = top_y + 14
+        draw.line((chart_right, anchor_y, rail_left - 6, center_y), fill=color, width=1)
+        draw.rounded_rectangle(
+            (rail_left, top_y, rail_right, top_y + 28),
+            radius=5, fill="#08131b", outline=color, width=1,
+        )
         text = f"{label}  {_price(value)}"
-        bbox = draw.textbbox((0, 0), text, font=_font(14, True))
-        tw = bbox[2] - bbox[0]
-        draw.rectangle((chart_right - tw - 20, yy - 22, chart_right - 4, yy + 2), fill="#08131b")
-        draw.text((chart_right - tw - 12, yy - 20), text, fill=color, font=_font(14, True))
+        draw.text((rail_left + 7, top_y + 6), text, fill=color, font=level_font)
 
     draw.text((chart_left + 12, chart_top + 10), f"{symbol} · {timeframe}", fill=_TEXT, font=_font(17, True))
     draw.text((chart_left + 12, chart_top + 36), "HAGMARTK · EVIDÊNCIA PROSPECTIVA", fill=_MUTED, font=_font(12))

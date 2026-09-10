@@ -70,6 +70,9 @@ class OrbProspectiveScanner:
         self._eligible: Dict[str, tuple[Dict[str, Any], OrbProfileResolution]] = {}
         self._reasons: Dict[str, int] = {}
         self._catalog_total = 0
+        self._liquidity_quote_volume: Dict[str, float] = {}
+        self._liquidity_percentile: Dict[str, float] = {}
+        self._liquidity_updated_at: Optional[datetime] = None
         self._prepared_date: Optional[date] = None
         self._last_boundary: Optional[datetime] = None
         self._stop = threading.Event()
@@ -82,7 +85,44 @@ class OrbProspectiveScanner:
         self._reasons = reasons
         self._catalog_total = len(rows)
         self.capture.update_symbols(self._eligible.keys())
+        self._refresh_liquidity()
         return len(self._eligible)
+
+    def _refresh_liquidity(self) -> None:
+        self._liquidity_quote_volume = {}
+        self._liquidity_percentile = {}
+        binance = getattr(self.adapter, "binance", None)
+        if binance is None or not hasattr(binance, "get_24h_quote_volumes"):
+            self._liquidity_updated_at = None
+            return
+        try:
+            raw = binance.get_24h_quote_volumes() or {}
+            volumes = {
+                symbol: float(raw[symbol])
+                for symbol in self._eligible
+                if symbol in raw and float(raw[symbol]) > 0.0
+            }
+        except Exception:
+            self._liquidity_updated_at = None
+            return
+        ranked = sorted(volumes.items(), key=lambda item: (item[1], item[0]))
+        self._liquidity_quote_volume = volumes
+        if len(ranked) == 1:
+            self._liquidity_percentile = {ranked[0][0]: 100.0}
+        else:
+            denominator = max(len(ranked) - 1, 1)
+            self._liquidity_percentile = {
+                symbol: round(index * 100.0 / denominator, 4)
+                for index, (symbol, _) in enumerate(ranked)
+            }
+        self._liquidity_updated_at = _now_utc()
+
+    def _publication_liquidity(self, symbol: str) -> Dict[str, Any]:
+        return {
+            "quote_volume_24h": self._liquidity_quote_volume.get(symbol),
+            "liquidity_percentile_24h": self._liquidity_percentile.get(symbol),
+            "publication_score_basis": "BINANCE_24H_QUOTE_VOLUME_PERCENTILE",
+        }
 
     def _session_for(self, resolution: OrbProfileResolution, local_date: date):
         assert resolution.profile is not None
@@ -173,7 +213,10 @@ class OrbProspectiveScanner:
         candles = [self._candle_from_row(dict(row)) for row in rows]
         return [candle for candle in candles if candle.close_time <= boundary]
 
-    def _event(self, row: Dict[str, Any], event_type: str, event_time: datetime, payload: Dict[str, Any], notify: bool = True) -> None:
+    def _event(
+        self, row: Dict[str, Any], event_type: str, event_time: datetime,
+        payload: Dict[str, Any], notify: bool = True,
+    ) -> Optional[Dict[str, Any]]:
         event_id = f"{row['session_id']}:{event_type}:{payload.get('signal_id') or payload.get('exit_reason') or event_time.isoformat()}"
         body = {
             "strategy_id": DEFAULT_ORB_CONFIG.strategy_id,
@@ -206,6 +249,7 @@ class OrbProspectiveScanner:
                 self.notifier.notify_orb_async(event_type, body)
             except Exception:
                 _logger.exception("ORB Telegram notification failed")
+        return body if inserted else None
 
     def _mark_rejected(self, row: Dict[str, Any], reason: str, now: datetime) -> None:
         row["state"] = SessionState.SKIPPED.value
@@ -296,7 +340,7 @@ class OrbProspectiveScanner:
         opening: OpeningRange,
         signal,
         session,
-    ) -> None:
+    ) -> Optional[Dict[str, Any]]:
         now = _now_utc()
         # The first opportunity is persisted before any quote/order-like action.
         row["opportunity_consumed"] = 1
@@ -350,7 +394,7 @@ class OrbProspectiveScanner:
                 row["symbol"], signal.direction.value, float(levels.stop), float(levels.target),
                 session.t120, quote.time,
             )
-            self._event(row, "ENTRY_FILLED", quote.time, {
+            return self._event(row, "ENTRY_FILLED", quote.time, {
                 "signal_id": signal.signal_id,
                 "direction": signal.direction.value,
                 "bid": _s(quote.bid),
@@ -367,9 +411,11 @@ class OrbProspectiveScanner:
                 "data_resolution": profile.data_resolution,
                 "quote_source": quote_raw.get("source"),
                 "funding_estimate_per_unit": _s(funding_estimate),
-            })
+                **self._publication_liquidity(row["symbol"]),
+            }, notify=False)
         except Exception as exc:
             self._mark_rejected(row, str(exc), _now_utc())
+            return None
 
     def _scan_signal_boundary(self, boundary: datetime) -> None:
         sample_resolution = next(iter(self._eligible.values()))[1]
@@ -381,6 +427,7 @@ class OrbProspectiveScanner:
         ]
         if not targets:
             return
+        publication_candidates: list[Dict[str, Any]] = []
         with ThreadPoolExecutor(max_workers=self.max_workers) as pool:
             future_map = {
                 pool.submit(self._fetch_candles_for_boundary, symbol, boundary, 2): symbol
@@ -413,11 +460,25 @@ class OrbProspectiveScanner:
                     row["updated_at"] = _now_utc().isoformat()
                     self.store.upsert_session(row)
                     if signal is not None:
-                        self._enter_paper(row, resolution, opening, signal, session)
+                        entry_event = self._enter_paper(row, resolution, opening, signal, session)
+                        if entry_event is not None:
+                            publication_candidates.append(entry_event)
                 except Exception as exc:
                     row["data_quality_flags"] = json.dumps([str(exc)])
                     row["updated_at"] = _now_utc().isoformat()
                     self.store.upsert_session(row)
+
+        publication_candidates.sort(
+            key=lambda event: (
+                -float(event.get("liquidity_percentile_24h") or -1.0),
+                str(event.get("symbol") or ""),
+            )
+        )
+        for event in publication_candidates:
+            try:
+                self.notifier.notify_orb_async("ENTRY_FILLED", event)
+            except Exception:
+                _logger.exception("ORB ranked Telegram notification failed")
 
     def _close_no_signal_sessions(self, boundary: datetime) -> None:
         if not self._eligible:
@@ -539,7 +600,7 @@ class OrbProspectiveScanner:
             self._event(row, "EXIT_UNRESOLVED", now, {
                 "exit_reason": "UNRESOLVED",
                 "reason": row["rejection_reason"],
-            })
+            }, notify=False)
 
     @staticmethod
     def _latest_five_minute_boundary(now: datetime) -> datetime:
@@ -645,6 +706,11 @@ class OrbProspectiveScanner:
             "catalog_total": self._catalog_total,
             "eligible_instruments": len(self._eligible),
             "unsupported_reasons": dict(self._reasons),
+            "publication_liquidity_symbols": len(self._liquidity_percentile),
+            "publication_liquidity_updated_at": (
+                self._liquidity_updated_at.isoformat() if self._liquidity_updated_at else None
+            ),
+            "publication_score_basis": "BINANCE_24H_QUOTE_VOLUME_PERCENTILE",
             "session_reference": "00:00 UTC explicit daily research reference",
             "today_t0": today_t0.isoformat() if today_t0 else None,
             "next_reference_t0": next_t0.isoformat() if next_t0 else None,

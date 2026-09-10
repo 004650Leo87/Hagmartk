@@ -42,6 +42,25 @@ class TelegramThreadStore:
                 "CREATE INDEX IF NOT EXISTS idx_telegram_thread_strategy "
                 "ON telegram_operation_threads(strategy, updated_at)"
             )
+            conn.execute("""
+            CREATE TABLE IF NOT EXISTS telegram_publication_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                strategy TEXT NOT NULL,
+                event_id TEXT NOT NULL,
+                operation_key TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                score REAL NOT NULL DEFAULT 0,
+                reason TEXT NOT NULL,
+                status TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(strategy, event_id)
+            )
+            """)
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_telegram_publication_window "
+                "ON telegram_publication_log(strategy, status, created_at)"
+            )
             conn.commit()
 
     def get(self, operation_key: str) -> Optional[Dict[str, Any]]:
@@ -68,6 +87,58 @@ class TelegramThreadStore:
                 ON CONFLICT(operation_key) DO UPDATE SET
                     updated_at=excluded.updated_at""",
                 (operation_key, strategy, chat_id, int(root_message_id), root_event_id, now, now),
+            )
+            conn.commit()
+
+    def recent_publication_activity(
+        self, strategy: str, since_iso: str,
+    ) -> list[Dict[str, Any]]:
+        with self._lock, self._connect() as conn:
+            rows = conn.execute(
+                """SELECT * FROM telegram_publication_log
+                WHERE strategy=? AND status IN ('RESERVED','PUBLISHED') AND created_at>=?
+                ORDER BY created_at ASC""",
+                (strategy, since_iso),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def reserve_publication(
+        self, strategy: str, event_id: str, operation_key: str,
+        symbol: str, score: float, reason: str,
+    ) -> bool:
+        now = _utc_now()
+        with self._lock, self._connect() as conn:
+            cur = conn.execute(
+                """INSERT OR IGNORE INTO telegram_publication_log
+                (strategy,event_id,operation_key,symbol,score,reason,status,created_at,updated_at)
+                VALUES (?,?,?,?,?,?, 'RESERVED', ?, ?)""",
+                (strategy, event_id, operation_key, symbol, float(score), reason, now, now),
+            )
+            conn.commit()
+            return cur.rowcount == 1
+
+    def record_suppression(
+        self, strategy: str, event_id: str, operation_key: str,
+        symbol: str, score: float, reason: str,
+    ) -> None:
+        now = _utc_now()
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                """INSERT OR IGNORE INTO telegram_publication_log
+                (strategy,event_id,operation_key,symbol,score,reason,status,created_at,updated_at)
+                VALUES (?,?,?,?,?,?, 'SUPPRESSED', ?, ?)""",
+                (strategy, event_id, operation_key, symbol, float(score), reason, now, now),
+            )
+            conn.commit()
+
+    def mark_publication_status(self, strategy: str, event_id: str, status: str) -> None:
+        if status not in {'PUBLISHED', 'FAILED'}:
+            raise ValueError('invalid publication status')
+        now = _utc_now()
+        with self._lock, self._connect() as conn:
+            conn.execute(
+                "UPDATE telegram_publication_log SET status=?, updated_at=? WHERE strategy=? AND event_id=?",
+                (status, now, strategy, event_id),
             )
             conn.commit()
 

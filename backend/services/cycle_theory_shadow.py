@@ -4,6 +4,7 @@ import hashlib
 import itertools
 import json
 import logging
+import os
 import threading
 import time
 from dataclasses import asdict, dataclass
@@ -31,12 +32,27 @@ _OPENING_POLICY_KEY = "__GLOBAL_WEEKLY_OPEN__"
 
 _PUBLISH_TYPES = {
     "LIMIT_FILLED",
-    "PARTIAL_EXECUTED",
-    "BREAKEVEN_APPLIED",
     "TARGET_LEVEL_REACHED",
     "TAKE_PROFIT",
     "STOP_LOSS",
 }
+
+_DEFAULT_LIVE_SYMBOLS = (
+    "EURUSD", "GBPUSD", "USDJPY", "EURGBP", "USDCHF",
+    "AUDUSD", "USDCAD", "NZDUSD", "GBPJPY", "XAUUSD",
+)
+
+def _configured_live_symbols() -> tuple[str, ...]:
+    raw = os.getenv("HAGMARTK_CYCLE_LIVE_SYMBOLS", "").strip()
+    if not raw:
+        return _DEFAULT_LIVE_SYMBOLS
+    return tuple(dict.fromkeys(x.strip().upper() for x in raw.split(",") if x.strip()))
+
+
+def _cycle_telegram_enabled() -> bool:
+    return os.getenv("HAGMARTK_CYCLE_TELEGRAM_ENABLED", "0").strip().lower() in {
+        "1", "true", "yes", "on"
+    }
 
 
 def _parse_utc(value: str) -> datetime:
@@ -117,6 +133,8 @@ class CycleTheoryProspectiveScanner:
         self.last_cycle_at = ""
         self.total_cycles = 0
         self.total_errors = 0
+        self.provider_catalog_size = 0
+        self.live_symbols_missing: list[str] = []
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -158,10 +176,14 @@ class CycleTheoryProspectiveScanner:
 
     def refresh_universe(self, adapter: Any) -> int:
         rows = adapter.get_symbols()
-        self.symbol_rows = {
+        requested = set(_configured_live_symbols())
+        catalog = {
             str(row.get("symbol") or "").upper(): dict(row)
             for row in rows if str(row.get("symbol") or "").strip()
         }
+        self.provider_catalog_size = len(catalog)
+        self.symbol_rows = {symbol: catalog[symbol] for symbol in requested if symbol in catalog}
+        self.live_symbols_missing = sorted(requested - set(self.symbol_rows))
         return len(self.symbol_rows)
 
     def _desired_timeframe(self, context: CycleRuntimeContext, tick_utc: datetime) -> str:
@@ -246,6 +268,7 @@ class CycleTheoryProspectiveScanner:
     def _record_event(
         self, context: CycleRuntimeContext, event_type: str,
         payload: dict[str, Any], event_time: datetime,
+        publish_notification: bool = True,
     ) -> bool:
         direction = self._direction(context, payload)
         levels = self._levels(context)
@@ -277,7 +300,10 @@ class CycleTheoryProspectiveScanner:
             "payload": clean_payload, "levels": levels,
         }
         inserted = self.store.add_event(event)
-        if inserted and event_type in _PUBLISH_TYPES:
+        if (
+            inserted and publish_notification and _cycle_telegram_enabled()
+            and event_type in _PUBLISH_TYPES
+        ):
             self.notifier.notify_cycle_async(event)
         if inserted and event_type == "ORDER_SUBMITTED" and context.timeframe == "M15":
             local_dt = event_time.astimezone(timezone.utc).astimezone(_SAO_PAULO)
@@ -303,15 +329,18 @@ class CycleTheoryProspectiveScanner:
         }
         return mapping.get(event_type, str(payload.get("reason") or event_type.replace("_", " ")))
 
-    def _drain_telemetry(self, context: CycleRuntimeContext, event_time: datetime) -> int:
+    def _drain_telemetry(self, context: CycleRuntimeContext, event_time: datetime, publish_notifications: bool = True) -> int:
         events = context.strategy.sm.telemetry.events
         new = events[context.telemetry_cursor:]
         for item in new:
-            self._record_event(context, item.type.name, dict(item.payload), event_time)
+            self._record_event(context, item.type.name, dict(item.payload), event_time, publish_notifications)
         context.telemetry_cursor = len(events)
         return len(new)
 
-    def _process_tick(self, context: CycleRuntimeContext, bid: float, ask: float, tick_utc: datetime) -> None:
+    def _process_tick(
+        self, context: CycleRuntimeContext, bid: float, ask: float, tick_utc: datetime,
+        publish_notifications: bool = True,
+    ) -> None:
         assert context.clock is not None
         server_time = context.clock.utc_to_server_naive(tick_utc)
         execution_events = context.execution.process_tick(bid=bid, ask=ask, at=server_time)
@@ -319,9 +348,9 @@ class CycleTheoryProspectiveScanner:
             self._record_event(context, item.kind, {
                 "ticket": item.ticket, "price": item.price,
                 "points": item.points, "r_multiple": item.r_multiple,
-            }, tick_utc)
+            }, tick_utc, publish_notifications)
         context.strategy.on_tick()
-        self._drain_telemetry(context, tick_utc)
+        self._drain_telemetry(context, tick_utc, publish_notifications)
         context.last_tick_utc = tick_utc
 
     def _process_market_delta(self, adapter: Any, context: CycleRuntimeContext, quote: dict[str, Any]) -> None:
@@ -350,7 +379,10 @@ class CycleTheoryProspectiveScanner:
                     observed_utc = _parse_utc(str(row["time"]))
                     if context.last_tick_utc and observed_utc <= context.last_tick_utc:
                         continue
-                    self._process_tick(context, float(row["bid"]), float(row["ask"]), observed_utc)
+                    self._process_tick(
+                        context, float(row["bid"]), float(row["ask"]), observed_utc,
+                        publish_notifications=False,
+                    )
                 if context.last_tick_utc and context.last_tick_utc >= tick_utc:
                     self._save_runtime(context)
                     return
@@ -433,6 +465,13 @@ class CycleTheoryProspectiveScanner:
             "candidate_id": CYCLE_THEORY_V111_BASELINE.candidate_id,
             "parameter_hash": CYCLE_THEORY_V111_BASELINE_HASH,
             "universe_symbols": len(self.symbol_rows),
+            "provider_catalog_symbols": self.provider_catalog_size,
+            "universe_policy": "CURATED_FIDELITY_LIVE",
+            "configured_live_symbols": list(_configured_live_symbols()),
+            "missing_live_symbols": list(self.live_symbols_missing),
+            "fidelity_review": "OPEN",
+            "telegram_publish_enabled": _cycle_telegram_enabled(),
+            "telegram_publish_policy": "FAIL_CLOSED_DURING_FIDELITY_REVIEW",
             "contexts": len(self.contexts), "active_paper_trades": active,
             "timeframes": by_tf, "cycles": self.total_cycles,
             "errors": self.total_errors, "last_cycle_at": self.last_cycle_at,

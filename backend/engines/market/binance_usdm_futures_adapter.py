@@ -39,6 +39,8 @@ class BinanceUSDMFuturesMarketAdapter(MarketAdapter):
         self._connected = False
         self._exchange_cache: Optional[Dict[str, Any]] = None
         self._exchange_cache_at = 0.0
+        self._ticker24_cache: Optional[Dict[str, float]] = None
+        self._ticker24_cache_at = 0.0
         self._lock = threading.RLock()
     def _request_json(self, path: str, params: Optional[Dict[str, Any]] = None) -> Any:
         query = urllib.parse.urlencode(params or {})
@@ -77,6 +79,27 @@ class BinanceUSDMFuturesMarketAdapter(MarketAdapter):
             self._exchange_cache = payload
             self._exchange_cache_at = now
             return payload
+
+    def get_24h_quote_volumes(self) -> Dict[str, float]:
+        with self._lock:
+            now = time.monotonic()
+            if self._ticker24_cache is not None and (now - self._ticker24_cache_at) < 60.0:
+                return dict(self._ticker24_cache)
+            payload = self._request_json("/fapi/v1/ticker/24hr")
+            if not isinstance(payload, list):
+                raise AdapterError("Binance USD-M 24h ticker returned invalid payload")
+            result: Dict[str, float] = {}
+            for item in payload:
+                symbol = str(item.get("symbol") or "").upper()
+                try:
+                    quote_volume = float(item.get("quoteVolume") or 0.0)
+                except (TypeError, ValueError):
+                    quote_volume = 0.0
+                if symbol and quote_volume > 0.0:
+                    result[symbol] = quote_volume
+            self._ticker24_cache = result
+            self._ticker24_cache_at = now
+            return dict(result)
 
     @staticmethod
     def _filter_value(filters: List[Dict[str, Any]], filter_type: str, key: str, default: Any = 0) -> Any:

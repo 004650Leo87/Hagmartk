@@ -126,3 +126,64 @@ def test_duplicate_transition_does_not_duplicate_telegram(tmp_path):
     publisher.publish(ShadowEventType.SETUP_ARMED, evt, details)
     assert len(store.get_transitions(evt.event_id)) == 1
     assert fake.calls == 1
+
+
+def test_dvp_stale_root_is_rejected_before_queue():
+    evt = _event(ShadowState.ACTIVATED.value)
+    evt.activated_at = "2026-09-01T10:00:00+00:00"
+    evt.entry_price = 1.101
+    evt.pivot_1_time = "2026-09-01T09:00:00+00:00"
+    evt.pivot_1_price = 1.100
+    evt.pivot_2_time = "2026-09-01T09:30:00+00:00"
+    evt.pivot_2_price = 1.098
+    evt.initial_stop = 1.095
+    evt.target_2R = 1.113
+    notifier = TelegramNotifier(
+        TelegramConfig(True, "BOT_API", bot_token="secret", chat_id="123")
+    )
+    assert notifier.notify_async(ShadowEventType.ENTRY_ACTIVATED, evt, {}) is False
+
+
+def test_orb_incomplete_root_is_rejected_before_queue():
+    notifier = TelegramNotifier(
+        TelegramConfig(True, "BOT_API", bot_token="secret", chat_id="123")
+    )
+    incomplete = {
+        "event_time": "2026-09-09T23:59:50+00:00",
+        "symbol": "BTCUSDT",
+        "signal_id": "x",
+    }
+    assert notifier.notify_orb_async("ENTRY_FILLED", incomplete) is False
+
+
+def _qualified_orb_event(signal_id: str, symbol: str = "BTCUSDT", score: float = 95.0):
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat()
+    return {
+        "event_time": now,
+        "symbol": symbol,
+        "signal_id": signal_id,
+        "session_id": f"session-{signal_id}",
+        "signal_time": now,
+        "t0": now,
+        "range_high": "112.0", "range_low": "108.0",
+        "entry": "112.5", "stop": "107.5", "target": "122.5",
+        "liquidity_percentile_24h": score,
+    }
+
+
+def test_orb_budget_reserves_before_queue_and_blocks_burst(monkeypatch, tmp_path):
+    import backend.services.telegram_notifier as notifier_module
+    from backend.services.orb_publication_policy import OrbPublicationConfig
+    from backend.services.telegram_thread_store import TelegramThreadStore
+
+    submitted = []
+    monkeypatch.setattr(notifier_module._TELEGRAM_EXECUTOR, "submit", lambda *args, **kwargs: submitted.append(args))
+    notifier = TelegramNotifier(
+        TelegramConfig(True, "BOT_API", bot_token="secret", chat_id="123"),
+        thread_store=TelegramThreadStore(str(tmp_path / "budget.db")),
+    )
+    notifier.orb_publication_config = OrbPublicationConfig(1, 15, 60, 70.0)
+    assert notifier.notify_orb_async("ENTRY_FILLED", _qualified_orb_event("sig-1")) is True
+    assert notifier.notify_orb_async("ENTRY_FILLED", _qualified_orb_event("sig-2", "ETHUSDT")) is False
+    assert len(submitted) == 1

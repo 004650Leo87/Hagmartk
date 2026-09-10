@@ -48,6 +48,14 @@ class FakeAdapter:
             "volume_min": 1.0, "volume_max": 1000.0, "volume_step": 1.0,
             "trade_contract_size": 1.0,
         }]
+    def get_24h_quote_volumes(self):
+        return {"TESTUSDT": 1_000_000.0}
+    def get_24h_quote_volumes(self):
+        return {"TESTUSDT": 1_000_000.0}
+    def get_24h_quote_volumes(self):
+        return {"TESTUSDT": 1_000_000.0}
+    def get_24h_quote_volumes(self):
+        return {"TESTUSDT": 1_000_000.0}
     def get_mark_price(self, symbol):
         return {"next_funding_time": int(datetime(2026, 9, 9, 8, tzinfo=timezone.utc).timestamp() * 1000),
                 "last_funding_rate": 0.0001, "mark_price": 105.0}
@@ -105,6 +113,18 @@ def test_prospective_orb_builds_range_signals_and_enters_once(tmp_path):
     types = [item[0] for item in notifier.events]
     assert types.count("SIGNAL") == 1
     assert types.count("ENTRY_FILLED") == 1
+    entry = next(item[1] for item in notifier.events if item[0] == "ENTRY_FILLED")
+    assert entry["liquidity_percentile_24h"] == 100.0
+    assert entry["publication_score_basis"] == "BINANCE_24H_QUOTE_VOLUME_PERCENTILE"
+    entry = next(item[1] for item in notifier.events if item[0] == "ENTRY_FILLED")
+    assert entry["liquidity_percentile_24h"] == 100.0
+    assert entry["publication_score_basis"] == "BINANCE_24H_QUOTE_VOLUME_PERCENTILE"
+    entry = next(item[1] for item in notifier.events if item[0] == "ENTRY_FILLED")
+    assert entry["liquidity_percentile_24h"] == 100.0
+    assert entry["publication_score_basis"] == "BINANCE_24H_QUOTE_VOLUME_PERCENTILE"
+    entry = next(item[1] for item in notifier.events if item[0] == "ENTRY_FILLED")
+    assert entry["liquidity_percentile_24h"] == 100.0
+    assert entry["publication_score_basis"] == "BINANCE_24H_QUOTE_VOLUME_PERCENTILE"
 
 def _open_trade(scanner, store):
     t0 = datetime(2026, 9, 9, 0, 0, tzinfo=timezone.utc)
@@ -149,3 +169,15 @@ def test_prospective_orb_marks_stream_gap_unresolved(tmp_path):
     assert row["state"] == "ERROR_RECONCILE"
     assert "DATA_STREAM_GAP" in row["rejection_reason"]
     assert any(event[0] == "EXIT_UNRESOLVED" for event in notifier.events)
+
+
+def test_orb_restart_reconciliation_is_persisted_but_not_notified(tmp_path):
+    scanner, store, notifier = _scanner(tmp_path)
+    _open_trade(scanner, store)
+    notifier.events.clear()
+    scanner._reconcile_restart_gaps()
+    row = store.open_sessions()
+    assert row == []
+    session = store.sessions_for_t0(datetime(2026, 9, 9, 0, 0, tzinfo=timezone.utc).isoformat())[0]
+    assert session["state"] == "ERROR_RECONCILE"
+    assert notifier.events == []
