@@ -107,3 +107,23 @@ def test_invalid_input_is_fail_closed():
         )
     with pytest.raises(ValueError, match="DDIX_VALUE_NOT_FINITE"):
         simple_moving_average([1.0] * 19 + [float("nan")], 20)
+
+
+def test_indexed_alignment_matches_official_nelogica_sign_order():
+    from backend.strategies.ddix.public_reference import (
+        DidiIndexLines, DidiIndexMethod, IndexedAlignment, classify_indexed_alignment,
+    )
+    bullish = DidiIndexLines(0.25, -0.10, 0.0, DidiIndexMethod.ABSOLUTE, "test")
+    bearish = DidiIndexLines(-0.25, 0.10, 0.0, DidiIndexMethod.ABSOLUTE, "test")
+    assert classify_indexed_alignment(bullish).alignment is IndexedAlignment.BULLISH
+    assert classify_indexed_alignment(bearish).alignment is IndexedAlignment.BEARISH
+
+
+def test_indexed_alignment_does_not_mislabel_same_side_lines():
+    from backend.strategies.ddix.public_reference import (
+        DidiIndexLines, DidiIndexMethod, IndexedAlignment, classify_indexed_alignment,
+    )
+    lines = DidiIndexLines(0.20, 0.05, 0.0, DidiIndexMethod.RATIO, "test")
+    evidence = classify_indexed_alignment(lines)
+    assert evidence.alignment is IndexedAlignment.UNALIGNED
+    assert evidence.source_contract == "NEL_DIDI_INDEX_SIGN_ORDER_ONLY"

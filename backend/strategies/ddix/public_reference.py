@@ -213,3 +213,37 @@ def classify_false_point_candidate(
         continuation_bias=bias,
         provenance="REFERENCE_CANDIDATE_CST_PLUS_COMMUNITY_FORMALIZATION",
     )
+
+
+class IndexedAlignment(str, Enum):
+    BULLISH = "BULLISH"
+    BEARISH = "BEARISH"
+    UNALIGNED = "UNALIGNED"
+
+
+@dataclass(frozen=True)
+class IndexedAlignmentEvidence:
+    alignment: IndexedAlignment
+    fast_line: float
+    slow_line: float
+    reference_axis: float
+    source_contract: str
+
+
+def classify_indexed_alignment(lines: DidiIndexLines) -> IndexedAlignmentEvidence:
+    """Classify sign/order only; this is not sufficient to call an Agulhada."""
+    fast = _finite_number(lines.fast_line)
+    slow = _finite_number(lines.slow_line)
+    axis = _finite_number(lines.reference_axis)
+    alignment = IndexedAlignment.UNALIGNED
+    if fast > axis and slow < axis:
+        alignment = IndexedAlignment.BULLISH
+    elif fast < axis and slow > axis:
+        alignment = IndexedAlignment.BEARISH
+    return IndexedAlignmentEvidence(
+        alignment=alignment,
+        fast_line=fast,
+        slow_line=slow,
+        reference_axis=axis,
+        source_contract="NEL_DIDI_INDEX_SIGN_ORDER_ONLY",
+    )
