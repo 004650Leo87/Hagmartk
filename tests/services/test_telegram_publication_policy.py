@@ -41,6 +41,20 @@ def test_dvp_root_requires_fresh_complete_prospective_evidence():
     assert stale.reason == "STALE_OR_INVALID_ROOT_TIME"
 
 
+def test_dvp_root_accepts_internal_naive_utc_runtime_timestamp():
+    event = _dvp(processed_at="2026-09-09 19:59:30")
+    decision = evaluate_dvp_root(event, NOW)
+    assert decision.allowed is True
+    assert decision.reason == "QUALIFIED_DVP_ROOT"
+
+
+def test_dvp_root_still_rejects_stale_internal_naive_utc_timestamp():
+    event = _dvp(processed_at="2026-09-09 19:30:00")
+    decision = evaluate_dvp_root(event, NOW)
+    assert decision.allowed is False
+    assert decision.reason == "STALE_OR_INVALID_ROOT_TIME"
+
+
 def test_dvp_root_rejects_bootstrap_and_incomplete_evidence():
     bootstrap = _dvp()
     bootstrap.metadata = {"bootstrap_detected": True}

@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 import os
 from typing import Any, Mapping
 
+from backend.core.time_utils import parse_utc_timestamp
+
 
 @dataclass(frozen=True)
 class PublicationDecision:
@@ -13,15 +15,14 @@ class PublicationDecision:
 
 
 def _parse_utc(value: Any) -> datetime | None:
-    if not value:
-        return None
-    try:
-        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
-        if parsed.tzinfo is None:
-            return None
-        return parsed.astimezone(timezone.utc)
-    except (TypeError, ValueError):
-        return None
+    """Parse HAGMARTK internal timestamps as UTC, including legacy naive strings.
+
+    The project-wide time contract stores several trusted internal runtime fields as
+    ``YYYY-MM-DD HH:MM:SS`` without an explicit offset.  Reuse the centralized
+    parser so freshness gates do not reject valid prospective DVP events while
+    still comparing them as timezone-aware UTC instants.
+    """
+    return parse_utc_timestamp(value)
 
 
 def _max_root_age_seconds() -> float:
