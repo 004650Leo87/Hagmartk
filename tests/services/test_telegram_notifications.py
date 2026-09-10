@@ -144,9 +144,11 @@ def test_dvp_stale_root_is_rejected_before_queue():
     assert notifier.notify_async(ShadowEventType.ENTRY_ACTIVATED, evt, {}) is False
 
 
-def test_orb_incomplete_root_is_rejected_before_queue():
+def test_orb_incomplete_root_is_rejected_before_queue(tmp_path):
+    from backend.services.telegram_thread_store import TelegramThreadStore
     notifier = TelegramNotifier(
-        TelegramConfig(True, "BOT_API", bot_token="secret", chat_id="123")
+        TelegramConfig(True, "BOT_API", bot_token="secret", chat_id="123"),
+        thread_store=TelegramThreadStore(str(tmp_path / "incomplete-orb.db")),
     )
     incomplete = {
         "event_time": "2026-09-09T23:59:50+00:00",
