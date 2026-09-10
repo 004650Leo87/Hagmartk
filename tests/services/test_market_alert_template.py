@@ -35,7 +35,7 @@ def test_cycle_template_uses_same_standard_and_multiple_targets():
         "levels": {"entry": 3620.15, "stop": 3612.4, "target_1": 3627.9,
                    "target_2": 3635.65, "target_3": 3643.4}, "payload": {},
     })
-    assert alert["strategy_name"] == "HAGMARTK TEORIA DOS CICLOS"
+    assert alert["strategy_name"] == "HAGMARTK TDC"
     assert alert["event_time_brazil"] == "08/09/2026 • 14:42:00"
     text = format_telegram_alert(alert)
     assert "Alvo 1" in text and "Alvo 2" in text and "Alvo 3" in text

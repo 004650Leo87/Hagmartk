@@ -6,7 +6,7 @@ import './EvidenceDashboard.css';
 const FILTERS = [
   { key: 'ALL', label: 'Todos' },
   { key: 'DVP', label: 'DVP' },
-  { key: 'TC', label: 'Teoria dos Ciclos' },
+  { key: 'TC', label: 'TDC' },
   { key: 'ORB', label: 'ORB' },
 ];
 
@@ -14,7 +14,7 @@ function HMLogo({ small = false }) {
   return <img className={`ev-hm-logo ${small ? 'small' : ''}`} src="/hm-logo.png" alt="HAGMARTK HM" />;
 }
 function strategyLabel(key) {
-  if (key === 'TC') return 'HAGMARTK TEORIA DOS CICLOS';
+  if (key === 'TC') return 'HAGMARTK TDC';
   if (key === 'DVP') return 'HAGMARTK DVP';
   if (key === 'ORB') return 'HAGMARTK ORB';
   return 'HAGMARTK';
@@ -193,7 +193,7 @@ export default function EvidenceDashboard({ onOpenStrategies, onOpenLegacyChart,
             <>
               <div className="ev-detail-hero"><span className={selected.direction === 'COMPRA' ? 'buy-dot' : 'sell-dot'}></span><div><strong>{strategyLabel(selected.strategy_key)}</strong><small>{selected.event_label}</small></div></div>
               <div className="ev-detail-list">
-                <div><span>Estratégia</span><b>{selected.strategy_key === 'TC' ? 'TEORIA DOS CICLOS' : selected.strategy_key}</b></div>
+                <div><span>Estratégia</span><b>{selected.strategy_key === 'TC' ? 'TDC' : selected.strategy_key}</b></div>
                 <div><span>Ativo</span><b>{selected.symbol}</b></div>
                 <div><span>Horário (Brasília)</span><b>{selected.time_brazil}</b></div>
                 <div><span>Direção</span><b className={selected.direction === 'COMPRA' ? 'positive' : 'negative'}>{selected.direction === 'COMPRA' ? '↑ LONG' : '↓ SHORT'}</b></div>

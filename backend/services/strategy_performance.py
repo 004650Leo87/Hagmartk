@@ -146,7 +146,7 @@ class StrategyPerformanceService:
         last_time = str(rows[-1]["event_time"]) if rows else None
 
         return {
-            "strategy": "TC", "strategy_name": "HAGMARTK TEORIA DOS CICLOS",
+            "strategy": "TC", "strategy_name": "HAGMARTK TDC",
             "available": True, "event_range": {"from": first_time, "to": last_time},
             "total_events": len(rows), "symbols": len(symbols), "timeframes": sorted(timeframes),
             "orders_submitted": int(event_counts.get("ORDER_SUBMITTED", 0)),

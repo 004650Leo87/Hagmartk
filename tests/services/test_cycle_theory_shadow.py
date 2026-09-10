@@ -49,7 +49,7 @@ def test_cycle_telegram_template_is_portuguese_spaced_and_paper_only():
         },
         "payload": {"detail": "Ordem virtual gerada."},
     })
-    assert "HAGMARTK TEORIA DOS CICLOS" in text
+    assert "HAGMARTK TDC" in text
     assert "OPORTUNIDADE EM OBSERVAÇÃO" in text
     assert "<b>Gráfico:</b> M15" in text
     assert "Alvo 1" in text and "Alvo 2" in text and "Alvo 3" in text

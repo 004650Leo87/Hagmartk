@@ -292,7 +292,7 @@ class TelegramNotifier:
         levels = event.get("levels") or {}
         payload = event.get("payload") or {}
         lines = [
-            "?? <b>HAGMARTK SHADOW ? TEORIA DOS CICLOS V111</b>",
+            "?? <b>HAGMARTK SHADOW ? TDC V111</b>",
             "??????????????????",
             "",
             f"{icon} <b>{cls._esc(label)}</b>",

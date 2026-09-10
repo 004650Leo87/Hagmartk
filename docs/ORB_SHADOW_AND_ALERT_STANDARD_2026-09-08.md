@@ -17,7 +17,7 @@
 ## Padrão de comunicação
 As três estratégias usam o mesmo template operacional:
 - HAGMARTK DVP
-- HAGMARTK TEORIA DOS CICLOS
+- HAGMARTK TDC
 - HAGMARTK ORB
 
 Campos principais: ativo, horário de Brasília, direção, timeframe, entrada, stop, alvos e resultado quando disponível.

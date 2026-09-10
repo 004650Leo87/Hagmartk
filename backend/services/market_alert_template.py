@@ -11,7 +11,7 @@ _BR_TZ = ZoneInfo("America/Sao_Paulo")
 
 _STRATEGY_NAMES = {
     "DVP": "HAGMARTK DVP",
-    "TC": "HAGMARTK TEORIA DOS CICLOS",
+    "TC": "HAGMARTK TDC",
     "ORB": "HAGMARTK ORB",
 }
 
