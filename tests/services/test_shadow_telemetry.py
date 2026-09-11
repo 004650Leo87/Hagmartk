@@ -36,7 +36,7 @@ def test_telemetry_starts_empty(temp_store):
     assert telemetry["global"]["failed_checks"] == 0
     assert telemetry["global"]["coverage"] is None
     assert telemetry["global"]["health"] == "UNKNOWN"
-    assert len(telemetry["combinations"]) == 104
+    assert len(telemetry["combinations"]) == 91
 
 
 def test_successful_check_recording(temp_store):

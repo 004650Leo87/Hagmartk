@@ -11,10 +11,10 @@ from backend.services.shadow_scanner import (
 )
 
 
-def test_shadow_scope_is_exactly_user_approved_8_timeframes():
-    assert SHADOW_TIMEFRAMES == ["M5", "M15", "M30", "H1", "H2", "H4", "D1", "W1"]
+def test_shadow_scope_is_exactly_user_approved_7_operational_timeframes():
+    assert SHADOW_TIMEFRAMES == ["M15", "M30", "H1", "H2", "H4", "D1", "W1"]
     assert len(SHADOW_ASSETS) == 13
-    assert len(SHADOW_ASSETS) * len(SHADOW_TIMEFRAMES) == 104
+    assert len(SHADOW_ASSETS) * len(SHADOW_TIMEFRAMES) == 91
 
 
 @pytest.mark.parametrize("timeframe", SHADOW_TIMEFRAMES)

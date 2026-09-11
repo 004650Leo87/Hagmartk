@@ -11,7 +11,7 @@ Cobre os 15 pontos de teste do backend:
 8. símbolo inválido (vazio) é tratado corretamente (400)
 9. Watchlist persiste no arquivo watchlist.json
 10. Shadow Universe possui 13 ativos
-11. Shadow possui 8 timeframes
+11. Shadow DVP possui 7 timeframes operacionais
 12. Shadow possui 39 combinações
 13. remover BTCUSD da Watchlist NÃO remove BTCUSD do Shadow
 14. adicionar ativo à Watchlist NÃO cria scanner
@@ -133,12 +133,12 @@ def test_shadow_universe_has_13_assets():
     assert len(SHADOW_ASSETS) == 13
 
 
-def test_shadow_universe_has_3_timeframes():
-    assert SHADOW_TIMEFRAMES == ["M5", "M15", "M30", "H1", "H2", "H4", "D1", "W1"]
+def test_shadow_universe_has_7_operational_timeframes():
+    assert SHADOW_TIMEFRAMES == ["M15", "M30", "H1", "H2", "H4", "D1", "W1"]
 
 
-def test_shadow_universe_has_39_combinations():
-    assert len(SHADOW_ASSETS) * len(SHADOW_TIMEFRAMES) == 104
+def test_shadow_universe_has_91_combinations():
+    assert len(SHADOW_ASSETS) * len(SHADOW_TIMEFRAMES) == 91
 
 
 def test_remove_btc_from_watchlist_does_not_remove_from_shadow():
@@ -152,7 +152,7 @@ def test_remove_btc_from_watchlist_does_not_remove_from_shadow():
 
     # Shadow Universe permanece intacto com 13 ativos e 39 combinações
     assert "BTCUSD" in SHADOW_ASSETS
-    assert len(SHADOW_ASSETS) * len(SHADOW_TIMEFRAMES) == 104
+    assert len(SHADOW_ASSETS) * len(SHADOW_TIMEFRAMES) == 91
 
     # Restaurar watchlist
     _save_watchlist(original_wl)
@@ -167,7 +167,7 @@ def test_add_symbol_to_watchlist_does_not_create_shadow_scanner():
 
     # O Shadow Universe de 39 combinações permanece inalterado
     assert "AAPL" not in SHADOW_ASSETS
-    assert len(SHADOW_ASSETS) * len(SHADOW_TIMEFRAMES) == 104
+    assert len(SHADOW_ASSETS) * len(SHADOW_TIMEFRAMES) == 91
 
     # Limpar
     client.delete("/market/watchlist/AAPL")
@@ -183,6 +183,6 @@ def test_catalog_and_shadow_catalog_are_independent_sources():
     assert shadow_resp.status_code == 200
 
     shadow_data = shadow_resp.json()
-    assert shadow_data["total_timeframes"] == 8
+    assert shadow_data["total_timeframes"] == 7
     assert shadow_data["total_assets"] >= len(SHADOW_ASSETS)
     assert shadow_data["total_combinations"] == shadow_data["total_assets"] * shadow_data["total_timeframes"]

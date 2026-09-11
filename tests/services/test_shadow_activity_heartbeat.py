@@ -1,10 +1,10 @@
 """Testes da Fase 5C.27 — Proof Determinístico da Telemetria e Activity Meter do HDF Engine.
 
 Testa:
-1. GET /api/shadow/heartbeat retorna telemetria real dos 104 scanners.
+1. GET /api/shadow/heartbeat retorna telemetria real dos 91 scanners.
 2. scan_cycle_count_total incrementa a cada ciclo de polling do scanner.
 3. evaluation_count_total incrementa APENAS quando uma nova vela fechada é entregue ao motor HDF.
-4. XAUUSD nos 8 timeframes configurados estão registrados e incluídos na varredura.
+4. XAUUSD nos 7 timeframes configurados estão registrados e incluídos na varredura.
 5. Detecção estrita de stale/erro (sem animação falsa ou pulso estático).
 """
 from __future__ import annotations
@@ -37,10 +37,10 @@ def test_xauusd_scanners_included_in_heartbeat():
     scanners = hb.get("scanners", [])
 
     xauusd_scanners = [s for s in scanners if s["symbol"] == "XAUUSD"]
-    assert len(xauusd_scanners) == 8, f"Esperado 8 scanners XAUUSD, encontrado {len(xauusd_scanners)}"
+    assert len(xauusd_scanners) == 7, f"Esperado 7 scanners XAUUSD, encontrado {len(xauusd_scanners)}"
 
     tfs = [s["timeframe"] for s in xauusd_scanners]
-    assert tfs == ["M5", "M15", "M30", "H1", "H2", "H4", "D1", "W1"]
+    assert tfs == ["M15", "M30", "H1", "H2", "H4", "D1", "W1"]
 
 
 def test_activity_meter_delta_governance_mock():

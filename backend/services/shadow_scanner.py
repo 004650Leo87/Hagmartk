@@ -31,7 +31,7 @@ METALS_ASSETS = ["XAUUSD", "XAGUSD"]
 CRYPTO_ASSETS = ["BTCUSD", "ETHUSD"]
 
 SHADOW_ASSETS = FOREX_ASSETS + METALS_ASSETS + CRYPTO_ASSETS
-SHADOW_TIMEFRAMES = ["M5", "M15", "M30", "H1", "H2", "H4", "D1", "W1"]
+SHADOW_TIMEFRAMES = ["M15", "M30", "H1", "H2", "H4", "D1", "W1"]
 SHADOW_TIMEFRAME_MINUTES = {tf: TIMEFRAME_MINUTES[tf] for tf in SHADOW_TIMEFRAMES}
 
 
@@ -202,7 +202,20 @@ class ShadowScannerManager:
             pass
         self._next_scan_due[(symbol, timeframe)] = now_dt + delay
 
+    def _reconcile_operational_timeframe_scope(self) -> None:
+        """Disable persisted scanner states outside the current live DVP scope."""
+        allowed = set(SHADOW_TIMEFRAMES)
+        state_map = self.store.get_scanner_state_map(HDF_ROBUST_CANDIDATE_V1.candidate_id)
+        for (_symbol, timeframe), state in state_map.items():
+            if timeframe in allowed:
+                continue
+            state.enabled = False
+            state.scanner_status = ScannerStatus.DISABLED.value
+            state.error_message = "OUT_OF_OPERATIONAL_TIMEFRAME_SCOPE"
+            self.store.save_scanner_state(state)
+
     def enable_shadow(self) -> None:
+        self._reconcile_operational_timeframe_scope()
         self.enabled = True
         if not self.shadow_started_at:
             self.shadow_started_at = now_utc_str()
@@ -746,6 +759,8 @@ class ShadowScannerManager:
         """Inicia a thread de fundo autônoma para polling e escaneamento do Shadow Universe."""
         import threading
         import time
+
+        self._reconcile_operational_timeframe_scope()
 
         if getattr(self, "_scheduler_running", False):
             return

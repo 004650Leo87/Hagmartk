@@ -103,7 +103,7 @@ def test_observation_health_aggregation(temp_store):
     engine = ShadowObservationEngine(store=temp_store)
     health = engine.get_observation_health()
 
-    assert health["total_universe_combinations"] == 104
+    assert health["total_universe_combinations"] == 91
     assert health["observed_combinations"] == 0
     assert health["error_combinations"] == 0
 
@@ -112,13 +112,13 @@ def test_accumulation_progress_all_combinations(temp_store):
     engine = ShadowObservationEngine(store=temp_store)
     progress = engine.get_accumulation_progress()
 
-    assert progress["total_combinations"] == 104
-    assert len(progress["combinations"]) == 104
+    assert progress["total_combinations"] == 91
+    assert len(progress["combinations"]) == 91
 
     symbols = set(c["symbol"] for c in progress["combinations"])
     timeframes = set(c["timeframe"] for c in progress["combinations"])
     assert len(symbols) == 13
-    assert timeframes == {"M5", "M15", "M30", "H1", "H2", "H4", "D1", "W1"}
+    assert timeframes == {"M15", "M30", "H1", "H2", "H4", "D1", "W1"}
 
 
 def test_combination_drilldown(temp_store):
@@ -143,15 +143,15 @@ def test_api_observation_health():
     res = client.get("/api/shadow/observation/health")
     assert res.status_code == 200
     data = res.json()
-    assert data["total_universe_combinations"] == 104
+    assert data["total_universe_combinations"] == 91
 
 
 def test_api_observation_progress():
     res = client.get("/api/shadow/observation/progress")
     assert res.status_code == 200
     data = res.json()
-    assert data["total_combinations"] == 104
-    assert len(data["combinations"]) == 104
+    assert data["total_combinations"] == 91
+    assert len(data["combinations"]) == 91
 
 
 def test_api_observation_history():

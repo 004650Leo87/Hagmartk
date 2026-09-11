@@ -8,7 +8,7 @@ from fastapi.testclient import TestClient
 
 from backend.api.app import app
 from backend.domain.candidate import HDF_CANDIDATE_V1_PARAMETER_HASH, HDF_ROBUST_CANDIDATE_V1
-from backend.domain.shadow_models import EvidencePayload, ShadowEvent, ShadowState
+from backend.domain.shadow_models import EvidencePayload, ShadowEvent, ShadowScannerState, ShadowState
 from backend.services.alert_engine import InternalAlertEngine
 from backend.services.shadow_scanner import ShadowScannerManager
 from backend.services.shadow_store import ShadowStoreRepository
@@ -168,4 +168,31 @@ def test_X_Y_Z_api_shadow_endpoints():
     assert r_scanners.status_code == 200
     status = r_status.json()
     assert len(r_scanners.json()) == status["configured_combinations"]
-    assert len(r_scanners.json()) >= 104
+    assert len(r_scanners.json()) >= 91
+
+
+def test_operational_scope_disables_legacy_m5_scanner(temp_store):
+    legacy = ShadowScannerState(
+        candidate_id=HDF_ROBUST_CANDIDATE_V1.candidate_id,
+        symbol="EURUSD",
+        timeframe="M5",
+        enabled=True,
+        scanner_status="RUNNING",
+    )
+    temp_store.save_scanner_state(legacy)
+    mgr = ShadowScannerManager(store=temp_store)
+    mgr.enable_shadow()
+
+    stale = temp_store.get_scanner_state(
+        HDF_ROBUST_CANDIDATE_V1.candidate_id, "EURUSD", "M5"
+    )
+    assert stale is not None
+    assert stale.enabled is False
+    assert stale.scanner_status == "DISABLED"
+    assert stale.error_message == "OUT_OF_OPERATIONAL_TIMEFRAME_SCOPE"
+
+    live = temp_store.get_scanner_state(
+        HDF_ROBUST_CANDIDATE_V1.candidate_id, "EURUSD", "M15"
+    )
+    assert live is not None
+    assert live.enabled is True
