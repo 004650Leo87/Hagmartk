@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 import pytest
+from types import SimpleNamespace
 from fastapi.testclient import TestClient
 
 from backend.api.app import app
@@ -8,6 +9,7 @@ from backend.indicators.base import IndicatorRegistry
 from backend.indicators.moving_averages import EMAIndicator, SMAIndicator
 from backend.indicators.rsi import RSIIndicator
 from backend.services.market_service import MarketService
+import backend.services.market_service as market_service_module
 
 
 def make_sample_df(closes: list[float]) -> pd.DataFrame:
@@ -129,6 +131,8 @@ def test_market_service_get_indicators(monkeypatch):
 
     service = MarketService()
     monkeypatch.setattr(service, "candles", lambda sym, tf, bars, offset: df_mock.tail(bars))
+    monkeypatch.setattr(service, "_is_binance_futures_symbol", lambda _symbol: False)
+    monkeypatch.setattr(market_service_module.mt5, "symbol_info", lambda _symbol: SimpleNamespace(digits=5))
 
     res = service.get_indicators(symbol="EURUSD", timeframe=5, bars=30, rsi_periods=[14], ema_periods=[50])
     assert res["symbol"] == "EURUSD"
@@ -150,6 +154,8 @@ def test_indicators_api_endpoint(monkeypatch):
 
     from backend.api.routes import market
     monkeypatch.setattr(market, "candles", lambda sym, tf, bars, offset: df_mock.tail(bars))
+    monkeypatch.setattr(market, "_is_binance_futures_symbol", lambda _symbol: False)
+    monkeypatch.setattr(market_service_module.mt5, "symbol_info", lambda _symbol: SimpleNamespace(digits=5))
 
     client = TestClient(app)
     res = client.get("/market/indicators/EURUSD?timeframe=5&bars=20&rsi=14&ema=50,200")
